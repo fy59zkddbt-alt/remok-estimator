@@ -55,7 +55,13 @@
     floor: { laminate: 'Ламинат', kvp: 'Кварцвинил', linoleum: 'Линолеум' },
     sections: { walls: 'Стены', floor: 'Пол', ceiling: 'Потолок', electricity: 'Электрика', warmFloor: 'Тёплый пол' }
   };
+  R.company = {
+    name: 'ООО «Ремок»', inn: '5407978699', kpp: '540701001', ogrn: '1205400031616',
+    phone: '+7 905 955-50-06', email: 'info@remok.net',
+    address: '630132, Новосибирская область, г. Новосибирск, ул. Челюскинцев, д. 36/1, офис 509'
+  };
   R.DEFAULT_PRICING = {
+    hardwareDefault: 'Стандартная',
     lamination: { oneSideLaminationCoefficient: 1.3, twoSideLaminationCoefficient: 1.5 },
     aluminum: { aluminumRate: 13000, aluminumColorCoefficient: 1.4 },
     glazing: { exprof: 16500, veka: 18000, rehau: 22000 },
@@ -87,7 +93,7 @@
     const result = {};
     Object.keys(defaults).forEach(k => {
       const d = defaults[k], s = saved && saved[k];
-      result[k] = typeof d === 'object' ? merge(d, s) : typeof s === 'number' && Number.isFinite(s) && s >= 0 && (!/divisor/i.test(k) || s > 0) ? s : d;
+      result[k] = typeof d === 'object' ? merge(d, s) : typeof d === 'string' ? (typeof s === 'string' && s.trim() ? s.trim() : d) : typeof s === 'number' && Number.isFinite(s) && s >= 0 && (!/divisor/i.test(k) || s > 0) ? s : d;
     });
     return result;
   }
@@ -103,10 +109,12 @@
   const exteriorLabels = { aquilonRate: 'Аквилон: ставка, ₽', aquilonFixed: 'Аквилон: фиксированная часть, ₽', aquilonExtra: 'Аквилон: прибавка к глубине, м', corner1Rate: 'Уголок — 1 контур: ставка, ₽/м', corner2Rate: 'Уголок — 2 контура: ставка, ₽/м', cornerFixed: 'Уголок: фиксированная часть, ₽', metalExtra: 'Служебная прибавка для площади металла, м' };
   const interiorLabels = { sillExtra: 'Прибавка к ширине подоконника, м', bfkRate: 'БФК: ставка', bfkFixed: 'БФК: постоянная часть', mollerRate: 'Möller: ставка', mollerLDRate: 'Möller LD: ставка', mollerFixed: 'Möller: постоянная часть', sandwichRate: 'Сэндвич: ставка', sandwichFixed: 'Сэндвич: постоянная часть', qunellWhiteRate: 'Qunell белый: ставка', qunellColorRate: 'Qunell цветной: ставка', qunellFixed: 'Qunell: постоянная часть', whiteExtra: 'Qunell белый: доплата', colorExtra: 'Qunell цветной: доплата', sandwichDivisor: 'Сэндвич: делитель', qunellDivisor: 'Qunell / Möller: делитель', bfkDivisor: 'Отдельный БФК: делитель', work2500: 'Работа: базовая группа 2500', work3000: 'Работа: базовая группа 3000', work3500: 'Работа: базовая группа 3500', work1500: 'Работа: базовая группа 1500', paintMultiplier: 'Внутренний множитель покраски', paintRate: 'Покраска: ставка, ₽/м²', multiplier: 'Финальный множитель' };
   function get(path) { return path.split('.').reduce((o, k) => o[k], pricing); }
-  function field(path, label) { return `<label class="remok-field">${label}<input type="number" inputmode="decimal" step="any" min="${/divisor/i.test(path) ? '0.000001' : '0'}" required data-price="${path}" value="${get(path)}"></label>`; }
+  const esc = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  function field(path, label) { if (typeof get(path) === 'string') return `<label class="remok-field">${label}<input type="text" required data-price="${path}" value="${esc(get(path))}"></label>`; return `<label class="remok-field">${label}<input type="number" inputmode="decimal" step="any" min="${/divisor/i.test(path) ? '0.000001' : '0'}" required data-price="${path}" value="${get(path)}"></label>`; }
   function section(title, content) { return `<section class="remok-card"><h2>${title}</h2><div class="remok-grid">${content}</div></section>`; }
   function render() {
     fields.innerHTML = section('Остекление', Object.entries(R.labels.profiles).map(([k, v]) => field('glazing.' + k, v + ', ₽/м²')).join(''))
+      + section('Фурнитура', field('hardwareDefault', 'Фурнитура по умолчанию'))
       + section('Ламинация ПВХ', field('lamination.oneSideLaminationCoefficient', 'Односторонняя ламинация, коэффициент') + field('lamination.twoSideLaminationCoefficient', 'Двусторонняя ламинация, коэффициент'))
       + section('Алюминиевое остекление', field('aluminum.aluminumRate', 'Холодный белый алюминий, ₽/м²') + field('aluminum.aluminumColorCoefficient', 'Коэффициент цветного алюминия'))
       + section('Наружная отделка', Object.entries(exteriorLabels).map(([k, v]) => field('exterior.' + k, v)).join(''))
@@ -121,7 +129,7 @@
     e.preventDefault();
     if (!form.reportValidity()) return;
     for (const el of fields.querySelectorAll('[data-price]')) {
-      const value = Number(el.value); if (!Number.isFinite(value)) { status.textContent = 'Проверьте числовые значения.'; return; }
+      const value = el.type === 'text' ? el.value.trim() : Number(el.value); if (el.type === 'text' ? !value : !Number.isFinite(value)) { status.textContent = 'Проверьте числовые значения.'; return; }
       const parts = el.dataset.price.split('.'), key = parts.pop(); parts.reduce((o, k) => o[k], pricing)[key] = value;
     }
     const ok = R.storage.write('pricing', pricing);
