@@ -78,6 +78,28 @@
       electricity: { base: 5000, point: 2000 }, warmFloor: { base: 5000, rate: 1600 }
     }
   };
+  // Stable IDs retain compatibility with the previous fixed glazing keys.
+  R.DEFAULT_PRICING.pvcProfiles = Object.entries(R.labels.profiles).map(([id,name]) => ({id,name,pricePerM2:R.DEFAULT_PRICING.glazing[id]}));
+  R.profiles = {
+    adapt(pricing, saved) {
+      const source=Array.isArray(saved?.pvcProfiles)?saved.pvcProfiles:R.DEFAULT_PRICING.pvcProfiles.map(p=>({...p,pricePerM2:pricing.glazing[p.id]}));
+      const ids=new Set();
+      pricing.pvcProfiles=source.filter(p=>p&&typeof p.id==='string'&&/^[a-zA-Z0-9_-]+$/.test(p.id)&&!['__proto__','constructor','prototype'].includes(p.id)&&typeof p.name==='string'&&p.name.trim()&&typeof p.pricePerM2==='number'&&Number.isFinite(p.pricePerM2)&&p.pricePerM2>=0&&!ids.has(p.id)&&ids.add(p.id)).map(p=>({id:p.id,name:p.name.trim(),pricePerM2:p.pricePerM2}));
+      pricing.glazing=Object.fromEntries(pricing.pvcProfiles.map(p=>[p.id,p.pricePerM2]));
+      R.labels.profiles=Object.fromEntries(pricing.pvcProfiles.map(p=>[p.id,p.name]));
+      return pricing;
+    },
+    resolve(item, pricing=R.storage.pricing()) {
+      const active=pricing.pvcProfiles?.find(p=>p.id===item.profile);
+      const snapshot=item.profileSnapshot;
+      return active || (snapshot?.id===item.profile&&typeof snapshot.name==='string'&&typeof snapshot.pricePerM2==='number'&&Number.isFinite(snapshot.pricePerM2)&&snapshot.pricePerM2>=0?snapshot:null);
+    },
+    name(item,pricing) {return R.profiles.resolve(item,pricing)?.name || 'Не указан';},
+    capture(item,pricing) {if(item.mode==='glazing'||item.mode==='balcony-glazing'&&item.balconyGlazingMaterial==='pvc'){const p=R.profiles.resolve(item,pricing);if(p)item.profileSnapshot={...p};}},
+    forItem(item,pricing) {const p=R.profiles.resolve(item,pricing);return p?{...pricing,glazing:{...pricing.glazing,[p.id]:p.pricePerM2}}:pricing;},
+    options(item,pricing) {const list=pricing.pvcProfiles.map(p=>[p.id,p.name]);const p=R.profiles.resolve(item,pricing);if(p&&!list.some(([id])=>id===p.id))list.push([p.id,p.name+' (удалён из настроек)']);return Object.fromEntries(list);}
+  };
+
 })();
 
 // ===== calculators =====
@@ -230,7 +252,7 @@
     });
     return result;
   }
-  R.storage = { read, write, pricing: () => merge(R.DEFAULT_PRICING, read('pricing')) };
+  R.storage = { read, write, pricing: () => { const saved=read('pricing'); return R.profiles.adapt(merge(R.DEFAULT_PRICING, saved), saved); } };
 })();
 
 // ===== font-data =====
@@ -2954,11 +2976,26 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
   const openings = { fixed: 'Глухая', turn: 'Поворотная', tilt_turn: 'Поворотно-откидная' };
   const escape = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const positive = n => Number.isFinite(Number(n)) && Number(n) > 0;
+  function openingDescription(s, aluminum=false) {
+    const title=(aluminum?{fixed:'Глухая',sliding:'Раздвижная'}:openings)[s.openingType]||'Не указано';
+    return title+(!aluminum&&['turn','tilt_turn'].includes(s.openingType)?s.hingeSide==='left'?', петли слева':s.hingeSide==='right'?', петли справа':', петли не указаны':'');
+  }
+  function drawOpening(line,text,s,l,t,r,b) {
+    if(!['turn','tilt_turn'].includes(s.openingType))return;
+    if(['left','right'].includes(s.hingeSide)) {
+      const hinge=s.hingeSide==='left'?l:r,opposite=s.hingeSide==='left'?r:l;
+      // Triangle apex and hinge marks are on the hinge side; handle is opposite.
+      line(opposite,t,hinge,(t+b)/2);line(hinge,(t+b)/2,opposite,b);
+      const mark=Math.min(4,(r-l)/8),gap=Math.min(5,(b-t)/5);line(hinge-mark,t+gap,hinge+mark,t+gap);line(hinge-mark,b-gap,hinge+mark,b-gap);
+    } else text((l+r)/2,(t+b)/2,'?');
+    if(s.openingType==='tilt_turn'){line(l,b,(l+r)/2,t);line((l+r)/2,t,r,b);}
+  }
+
   function equalize(product) {
     const type = types[product.productType]; if (!type) return;
     const width = positive(product.width) ? Number(product.width) : 0;
     const part = Math.floor(width / type.count);
-    product.sections = Array.from({ length: type.count }, (_, i) => ({ widthMm: width ? (i === type.count - 1 ? width - part * i : part) : '', openingType: product.sections?.[i]?.openingType || 'fixed' }));
+    product.sections = Array.from({ length: type.count }, (_, i) => ({ ...(product.sections?.[i] || {hingeSide:'left'}), widthMm: width ? (i === type.count - 1 ? width - part * i : part) : '', openingType: product.sections?.[i]?.openingType || 'fixed' }));
     product.sectionWidthsAuto = true;
   }
   function sectionData(product) {
@@ -2971,8 +3008,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
   function characteristics(product, hardwareDefault = 'Стандартная') {
     if (product.mode !== 'glazing') return [];
     const type = types[product.productType], data = sectionData(product);
-    const configuration = type ? data.sections.map((s, i) => (type.balcony ? (i === 0 ? 'Окно: ' : 'Дверь: ') : '') + (openings[s.openingType] || 'Не указана')).join(' / ') : 'Не указана';
-    return ['Размер: ' + product.width + ' × ' + product.height + ' мм', 'Профиль: ' + (R.labels.profiles[product.profile] || 'Не указан'), 'Ламинация: ' + (R.labels.lamination[product.lamination || 'none'] || 'Не указана'), 'Фурнитура: ' + (product.hardware?.trim() || hardwareDefault), 'Конфигурация: ' + configuration,
+    const configuration = type ? data.sections.map((s, i) => (type.balcony ? (i === 0 ? 'Окно: ' : 'Дверь: ') : '') + openingDescription(s)).join(' / ') : 'Не указана';
+    return ['Размер: ' + product.width + ' × ' + product.height + ' мм', 'Профиль: ' + R.profiles.name(product), 'Ламинация: ' + (R.labels.lamination[product.lamination || 'none'] || 'Не указана'), 'Фурнитура: ' + (product.hardware?.trim() || hardwareDefault), 'Конфигурация: ' + configuration,
       ...(type?.balcony ? ['Дверь ' + (product.doorSide === 'left' ? 'слева' : 'справа')] : [])];
   }
   // Coordinates and primitives are shared by SVG and jsPDF. No price data here.
@@ -2980,26 +3017,25 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     const custom = R.v2?.geometry(product, options); if (custom !== undefined) return custom;
     const type = types[product.productType]; if (!type) return null;
     const data = sectionData(product), primitives = [];
+    const transom = product.mode === 'glazing' && ['double','triple'].includes(product.productType) && product.hasTopTransom;
+    if (transom && !(positive(product.transomHeightMm) && Number(product.transomHeightMm) < Number(product.height))) return null;
     const ratio = Math.max(0.65, Math.min(2.3, (Number(product.width) || 1400) / (Number(product.height) || 1400)));
-    const h = Math.min(190, 300 / ratio), w = h * ratio, x = (350 - w) / 2, y = 46;
+    const h = Math.min(190, 300 / ratio), w = h * ratio, x = (400 - w) / 2, y = 46;
     const line = (x1, y1, x2, y2) => primitives.push({ kind: 'line', x1, y1, x2, y2 });
     const rect = (x, y, width, height) => primitives.push({ kind: 'rect', x, y, width, height });
     const text = (x, y, value) => primitives.push({ kind: 'text', x, y, text: String(value) });
     const order = type.balcony && product.doorSide === 'left' ? [1, 0] : data.sections.map((_, i) => i);
+    const topHeight = transom ? h * Number(product.transomHeightMm) / Number(product.height) : 0;
+    if (transom) { rect(x,y,w,topHeight); const inset=Math.min(7,topHeight/4); rect(x+inset,y+inset,w-2*inset,topHeight-2*inset); line(x-9,y,x-9,y+topHeight); line(x-14,y,x-4,y); line(x-14,y+topHeight,x-4,y+topHeight); text(x-29,y+topHeight/2,product.transomHeightMm); }
     let cursor = x;
     for (const index of order) {
       const s = data.sections[index];
       const sw = w * (data.valid ? Number(s.widthMm) / Number(product.width) : 1 / type.count);
-      const sh = type.balcony && index === 0 ? h * 0.65 : h;
-      rect(cursor, y, sw, sh);
-      const inset = Math.min(7, sw / 6), l = cursor + inset, r = cursor + sw - inset, t = y + 7, b = y + sh - 7;
+      const sh = type.balcony && index === 0 ? h * 0.65 : h - topHeight, baseY = y + topHeight;
+      rect(cursor, baseY, sw, sh);
+      const inset = Math.min(7, sw / 6), verticalInset=Math.min(7,sh/5), l = cursor + inset, r = cursor + sw - inset, t = baseY + verticalInset, b = baseY + sh - verticalInset;
       rect(l, t, r - l, b - t);
-      if (['turn', 'tilt_turn'].includes(s.openingType)) {
-        const mirror = type.balcony && product.doorSide === 'left';
-        line(mirror ? r : l, t, mirror ? l : r, (t + b) / 2);
-        line(mirror ? l : r, (t + b) / 2, mirror ? r : l, b);
-      }
-      if (s.openingType === 'tilt_turn') { line(l, b, (l + r) / 2, t); line((l + r) / 2, t, r, b); }
+      drawOpening(line,text,s,l,t,r,b);
       if (!options.preview) {
         line(cursor, y - 12, cursor + sw, y - 12); line(cursor, y - 17, cursor, y - 7); line(cursor + sw, y - 17, cursor + sw, y - 7);
         text(cursor + sw / 2, y - 21, positive(s.widthMm) ? s.widthMm : '—');
@@ -3015,7 +3051,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     return { width: 440, height: 285, primitives, title: type.label, note: options.preview ? '' : 'Размеры в мм. Эскиз схематичный.' + (!data.valid ? ' Ширины секций не согласованы: показаны равные пропорции.' : '') + (type.balcony ? ' Высота оконной части условная, не является замером.' : '') };
   }
   function renderWindowSketch(product, options = {}) {
-    const model = options.model || geometry(product, options); if (!model) return '<p class="remok-help">Тип изделия и конфигурация не указаны. Эскиз недоступен.</p>';
+    const model = options.model || geometry(product, options); if (!model && product.hasTopTransom && ['double','triple'].includes(product.productType)) return '<p class="remok-warning">Для эскиза укажите высоту фрамуги больше нуля и меньше общей высоты окна.</p>'; if (!model) return '<p class="remok-help">Тип изделия и конфигурация не указаны. Эскиз недоступен.</p>';
     const shapes = model.primitives.map(p => p.kind === 'line' ? `<line x1="${p.x1}" y1="${p.y1}" x2="${p.x2}" y2="${p.y2}"/>` : p.kind === 'rect' ? `<rect x="${p.x}" y="${p.y}" width="${p.width}" height="${p.height}"/>` : `<text x="${p.x}" y="${p.y}">${escape(p.text)}</text>`).join('');
     return `<figure class="remok-sketch"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${model.width} ${model.height}" role="img" aria-label="${escape(model.title)}"><g fill="none" stroke="currentColor" stroke-width="1.5">${shapes}</g></svg>${model.note ? '<figcaption>' + escape(model.note) + '</figcaption>' : ''}</figure>`;
   }
@@ -3029,7 +3065,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       else doc.text(p.text.replace('—', '-'), dx + p.x * scale, y + p.y * scale, { align: 'center' });
     }
   }
-  R.windowSketch = { types, openings, equalize, sectionData, characteristics, geometry, renderWindowSketch, drawPdf };
+  R.windowSketch = { openingDescription, drawOpening, types, openings, equalize, sectionData, characteristics, geometry, renderWindowSketch, drawPdf };
 })();
 
 // ===== v2-model =====
@@ -3046,10 +3082,11 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
   function planes(p) { return planeIds(p).map(id => p.planes?.find(v => v.id === id) || newPlane(id)); }
   function equalPlane(p) {
     const n = Math.max(1, Math.min(8, Math.floor(Number(p.sectionCount) || 1))), w = Number(p.widthMm) || 0, part = Math.floor(w/n);
-    p.sections = Array.from({length:n}, (_,i) => ({ widthMm:w ? (i===n-1 ? w-part*i : part) : '', openingType:p.sections?.[i]?.openingType || 'fixed' })); p.sectionWidthsAuto = true;
+    p.sections = Array.from({length:n}, (_,i) => ({ ...(p.sections?.[i] || {hingeSide:'left'}), widthMm:w ? (i===n-1 ? w-part*i : part) : '', openingType:p.sections?.[i]?.openingType || 'fixed' })); p.sectionWidthsAuto = true;
   }
   function measure(p) {
     const errors = []; let area = 0, sandwichArea = 0;
+    if (p.mode==='glazing' && ['double','triple'].includes(p.productType) && p.hasTopTransom && !(C.positive(p.transomHeightMm) && Number(p.transomHeightMm)<Number(p.height))) errors.push('Высота верхней фрамуги должна быть больше нуля и меньше общей высоты окна.');
     if (p.mode === 'balcony-glazing') {
       if (!['pvc','aluminum'].includes(p.balconyGlazingMaterial)) errors.push('Выберите тип конструкции.');
       if (!shapes[p.balconyGlazingShape]) errors.push('Выберите форму остекления.');
@@ -3071,6 +3108,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
   }
   function finishDimensions(p) { return modernBlock(p) ? { width:Number(p.windowWidthMm)+Number(p.doorWidthMm),height:Number(p.doorHeightMm) } : {width:p.width,height:p.height}; }
   function product(p,pricing) {
+    pricing=R.profiles.forItem(p,pricing);
     const m=measure(p); let base, material=p.mode==='aluminum'?'aluminum':'pvc';
     if(p.mode==='balcony-glazing') {
       material=p.balconyGlazingMaterial;
@@ -3079,6 +3117,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       base={lines:[{title:'Остекление',price:all.filter(l=>l.title==='Остекление').reduce((s,l)=>s+l.price,0)},...results.flatMap((r,i)=>r.lines.filter(l=>l.title!=='Остекление').map(l=>({...l,detail:planeNames[planes(p)[i].id]+' · '+l.detail})))], errors:[...m.errors,...results.flatMap(r=>r.errors)],total:results.reduce((s,r)=>s+r.total,0)};
     } else {
       base=originalProduct({...p,...finishDimensions(p)},pricing);
+      if (!modernBlock(p)) base.errors.push(...m.errors);
       if(modernBlock(p)) {
         const old=base.lines.find(l=>l.title==='Остекление');
         const price=C.calculateGlazing(m.area*1e6,1,p.profile,pricing,p.lamination||'none');
@@ -3093,21 +3132,23 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     if(line) {
       const index=base.lines.indexOf(line), construction=line.price-adjustment-installation;
       if(construction<0) base.errors.push('Стоимость конструкции ниже выделенного монтажа. Проверьте ставки монтажа и сэндвича в настройках.');
-      base.lines.splice(index,1,{...line,kind:'construction',title:material==='aluminum'?'Алюминиевая конструкция':'Профиль '+(R.labels.profiles[p.profile]||''),detail:'',price:construction},{kind:'installation',title:'Монтаж с расходными материалами',detail:'',price:installation});
+      base.lines.splice(index,1,{...line,kind:'construction',title:material==='aluminum'?'Алюминиевая конструкция':'Профиль '+R.profiles.name(p,pricing),detail:'',price:construction},{kind:'installation',title:'Монтаж с расходными материалами',detail:'',price:installation});
       base.total-=adjustment;
     }
     return {...base,area:m.area,sandwichArea:m.sandwichArea,glassArea:m.glassArea,sandwichAdjustment:adjustment,installationDisplayPrice:line?installation:0};
   }
   function sync(p,pricing) {
+    R.profiles.capture(p,pricing);
     if(modernBlock(p)) {const dim=finishDimensions(p);p.width=dim.width||'';p.height=dim.height||'';p.sections=p.sections||[{},{}];p.sections[0]={...p.sections[0],widthMm:p.windowWidthMm};p.sections[1]={...p.sections[1],widthMm:p.doorWidthMm};}
     if(p.mode==='balcony-glazing') p.sandwichAdjustment=measure(p).sandwichArea*pricing.sandwichDiscountPerM2;
   }
   const fmt=n=>new Intl.NumberFormat('ru-RU',{maximumFractionDigits:3}).format(n);
-  function planeCharacteristics(p) {return [planeNames[p.id]+': '+p.widthMm+' × '+p.heightMm+' мм', 'Секции: '+(p.sections||[]).map(s=>s.widthMm||'—').join(' / ')+' мм', 'Открывание: '+(p.sections||[]).map(s=>S.openings[s.openingType]||aluminumOpenings[s.openingType]||'Не указано').join(' / '), ...(p.heightMode==='floor'?['В пол: верх '+p.upperHeightMm+' мм, низ '+p.lowerHeightMm+' мм; нижнее заполнение — '+(p.lowerFilling==='sandwich'?'сэндвич-панель':'стекло')]:[])];}
+  function planeCharacteristics(p,material) {return [planeNames[p.id]+': '+p.widthMm+' × '+p.heightMm+' мм', 'Секции: '+(p.sections||[]).map(s=>s.widthMm||'—').join(' / ')+' мм', 'Открывание: '+(p.sections||[]).map(s=>S.openingDescription(s,material==='aluminum')).join(' / '), ...(p.heightMode==='floor'?['В пол: верх '+p.upperHeightMm+' мм, низ '+p.lowerHeightMm+' мм; нижнее заполнение — '+(p.lowerFilling==='sandwich'?'сэндвич-панель':'стекло')]:[])];}
   function characteristics(p,hw) {
-    if(p.mode==='balcony-glazing') {const m=measure(p),pvc=p.balconyGlazingMaterial==='pvc';return ['Тип конструкции: '+(pvc?'ПВХ':'Алюминий'),'Форма: '+(shapes[p.balconyGlazingShape]||'Не указана'),pvc?'Профиль: '+(R.labels.profiles[p.profile]||'Не указан'):'Система: холодное алюминиевое остекление',pvc?'Ламинация: '+R.labels.lamination[p.lamination||'none']:'Цвет: '+R.labels.aluminumColors[p.aluminumColor||'white'],'Фурнитура: '+(p.hardware||hw),'Общая площадь: '+fmt(m.area)+' м²','Стекло: '+fmt(m.glassArea)+' м²',...(m.sandwichArea?['Сэндвич-панель: '+fmt(m.sandwichArea)+' м²']:[])];}
+    if(p.mode==='balcony-glazing') {const m=measure(p),pvc=p.balconyGlazingMaterial==='pvc';return ['Тип конструкции: '+(pvc?'ПВХ':'Алюминий'),'Форма: '+(shapes[p.balconyGlazingShape]||'Не указана'),pvc?'Профиль: '+R.profiles.name(p):'Система: холодное алюминиевое остекление',pvc?'Ламинация: '+R.labels.lamination[p.lamination||'none']:'Цвет: '+R.labels.aluminumColors[p.aluminumColor||'white'],'Фурнитура: '+(p.hardware||hw),'Общая площадь: '+fmt(m.area)+' м²','Стекло: '+fmt(m.glassArea)+' м²',...(m.sandwichArea?['Сэндвич-панель: '+fmt(m.sandwichArea)+' м²']:[])];}
     const rows=p.mode==='aluminum'?['Размер: '+p.width+' × '+p.height+' мм','Система: холодное алюминиевое остекление','Цвет: '+R.labels.aluminumColors[p.aluminumColor||'white'],'Фурнитура: '+(p.hardware||hw),...(p.sections?.length?['Открывание: '+p.sections.map(s=>aluminumOpenings[s.openingType]||'Не указано').join(' / ')]:[])]:S.characteristics(p,hw);
     if(modernBlock(p)) rows.splice(0,1,'Размер окна: '+p.windowWidthMm+' × '+p.windowHeightMm+' мм','Размер двери: '+p.doorWidthMm+' × '+p.doorHeightMm+' мм','Площадь: '+fmt(measure(p).area)+' м²');
+    if(p.mode==='glazing' && ['double','triple'].includes(p.productType) && p.hasTopTransom) rows.push('Верхняя фрамуга: глухая, '+p.transomHeightMm+' мм', 'Высота нижней части: '+(Number(p.height)-Number(p.transomHeightMm))+' мм');
     return rows;
   }
   // Extend the existing primitive model; the same primitives feed SVG and PDF.
@@ -3130,8 +3171,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       const floor=plane&&p.heightMode==='floor',upper=floor&&C.positive(p.upperHeightMm)&&C.positive(p.lowerHeightMm)?sh*Number(p.upperHeightMm)/(Number(p.upperHeightMm)+Number(p.lowerHeightMm)):floor?sh*.6:sh;
       rect(cursor,y,sw,sh);const inset=Math.min(5,sw/5),l=cursor+inset,r=cursor+sw-inset,t=y+5,b=y+upper-5;rect(l,t,r-l,Math.max(1,b-t));
       const openingType=p.mode==='aluminum'&&!(s.openingType in aluminumOpenings)?'':s.openingType;
-      if(['turn','tilt_turn'].includes(openingType)){line(l,t,r,(t+b)/2);line(r,(t+b)/2,l,b);}
-      if(openingType==='tilt_turn'){line(l,b,(l+r)/2,t);line((l+r)/2,t,r,b);}
+      S.drawOpening(line,text,{...s,openingType},l,t,r,b);
       if(openingType==='sliding'){const mid=(t+b)/2;line(l,mid,r,mid);line(r-5,mid-4,r,mid);line(r-5,mid+4,r,mid);}
       if(floor){line(cursor,y+upper,cursor+sw,y+upper);const top=y+upper+5, bottom=y+sh-5;rect(l,top,r-l,Math.max(1,bottom-top));if(p.lowerFilling==='sandwich')for(let yy=top;yy<bottom;yy+=9){const length=Math.min(r-l,bottom-yy);line(l,yy,l+length,yy+length);}}
       dimH(cursor,cursor+sw,y-13,block?(i===0?p.windowWidthMm:p.doorWidthMm):s.widthMm||'—');
@@ -3142,7 +3182,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     if(!block){dimV(x+w+13,y,y+h,height,'right');if(plane&&p.heightMode==='floor'){const upper=h*Number(p.upperHeightMm)/(Number(p.upperHeightMm)+Number(p.lowerHeightMm)||1);dimV(x-13,y,y+upper,p.upperHeightMm||'—','left');dimV(x-13,y+upper,y+h,p.lowerHeightMm||'—','left');}}
     return {width:560,height:300,primitives,title:block?'Балконный блок малый':plane?planeNames[p.id]:'Алюминиевое остекление',note:'Размеры в мм. Техническая схема.'+(!block&&!valid?' Ширины секций не согласованы: показаны равные пропорции.':'')};
   }
-  function sketches(p){return p.mode==='balcony-glazing'?planes(p).map(v=>({title:planeNames[v.id],model:geometry({...v,sketchPlane:true}),characteristics:planeCharacteristics(v)})):[{title:'',model:S.geometry(p),characteristics:[]}].filter(v=>v.model);}
+  function sketches(p){return p.mode==='balcony-glazing'?planes(p).map(v=>({title:planeNames[v.id],model:geometry({...v,sketchPlane:true}),characteristics:planeCharacteristics(v,p.balconyGlazingMaterial)})):[{title:'',model:S.geometry(p),characteristics:[]}].filter(v=>v.model);}
   R.v2={shapes,planeNames,aluminumOpenings,newPlane,planes,planeIds,equalPlane,modernBlock,measure,finishDimensions,sync,characteristics,geometry,sketches};
   C.product=product;
 })();
@@ -3360,6 +3400,14 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     const price = (key === 'exterior' ? C.calculateExterior : C.calculateInterior)(d.width, d.height, part.depth, part.type, pricing);
     return `<div class="remok-section"><h3>${title}</h3>${input(path + '.depth', key === 'exterior' ? 'Глубина наружного откоса, мм' : 'Глубина внутреннего откоса, мм')}${warning([part.depth], true)}${check(path + '.depthChecked', 'Я проверил глубину откосов по всем сторонам')}<p class="remok-help">Подтвердите, что глубина откоса проверена и существенное расхождение размеров не пропущено.</p>${check(path + '.hasDepthDifference', 'Есть расхождение глубины')}${part.hasDepthDifference ? textarea(path + '.comment', 'Комментарий по размерам', 'Слева 180 мм, справа 210 мм, сверху 190 мм') : ''}${select(path + '.type', 'Вариант отделки', L[key], true)}${price !== null ? `<div class="remok-result"><span class="${partReady(key) ? 'remok-success' : 'remok-muted'}">${partReady(key) ? '✓ ' : ''}${title}${partReady(key) ? '' : ' · подтвердите замер'}</span>${linesHTML([{ title: L[key][part.type], detail: 'Глубина откоса: ' + part.depth + ' мм', price }])}</div>` : ''}</div>`;
   }
+  function openingField(path,label,aluminum=false) {
+    const section=get(path)||{},direction=['turn','tilt_turn'].includes(section.openingType);
+    return select(path+'.openingType',label,aluminum?V.aluminumOpenings:S.openings,!aluminum)+(!aluminum&&direction?select(path+'.hingeSide','Петли',{left:'Слева',right:'Справа'},true):'');
+  }
+  function transomHTML(d) {
+    if(d.mode!=='glazing'||!['double','triple'].includes(d.productType))return '';
+    return `<div class="remok-section">${check('draft.hasTopTransom','Верхняя глухая фрамуга')}${d.hasTopTransom?input('draft.transomHeightMm','Высота верхней фрамуги, мм')+'<p class="remok-help">Нижняя часть: '+esc(Number(d.height)-Number(d.transomHeightMm))+' мм. Верхняя фрамуга — цельная, глухая.</p>':''}</div>`;
+  }
   function sketchHTML(item) {
     const sketches=V.sketches(item);
     return sketches.length?sketches.map(s=>`<div class="remok-plane-sketch">${s.title?'<h3>'+esc(s.title)+'</h3>':''}${S.renderWindowSketch(item,{model:s.model})}${s.characteristics.map(t=>'<p class="remok-help">'+esc(t)+'</p>').join('')}</div>`).join(''):'<p class="remok-help">Эскиз появится после ввода размеров.</p>';
@@ -3375,12 +3423,12 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     const ids=V.planeIds(d);if(!ids.includes(d.activePlaneId))d.activePlaneId=ids[0];
     const index=d.planes.findIndex(p=>p.id===d.activePlaneId),p=d.planes[index],path='draft.planes.'+index;
     const sum=p.sections.reduce((s,p)=>s+(Number(p.widthMm)||0),0),valid=p.sections.every(s=>C.positive(s.widthMm))&&Math.abs(sum-Number(p.widthMm))<.01;
-    return `<div class="remok-toggle remok-plane-tabs" role="tablist">${ids.map(id=>btn(V.planeNames[id],'plane-tab',`data-id="${id}" role="tab" aria-selected="${d.activePlaneId===id}"`)).join('')}</div><section class="remok-surface"><h2>${V.planeNames[p.id]}</h2><div class="remok-grid">${input(path+'.widthMm','Ширина плоскости, мм')}${input(path+'.heightMm','Высота плоскости, мм')}</div>${select(path+'.sectionCount','Количество секций',Object.fromEntries(Array.from({length:8},(_,i)=>[i+1,String(i+1)])))}${select(path+'.heightMode','Тип по высоте',{normal:'Обычное',floor:'В пол'})}${p.heightMode==='floor'?`<div class="remok-grid">${input(path+'.upperHeightMm','Высота верхнего яруса, мм')}${input(path+'.lowerHeightMm','Высота нижнего яруса, мм')}</div><p class="${C.positive(p.upperHeightMm)&&C.positive(p.lowerHeightMm)&&Math.abs(Number(p.upperHeightMm)+Number(p.lowerHeightMm)-Number(p.heightMm))<.01?'remok-success':'remok-warning'}">Общая высота: ${esc(p.heightMm)} мм. Сумма ярусов: ${Number(p.upperHeightMm)+Number(p.lowerHeightMm)} мм</p>${select(path+'.lowerFilling','Нижнее заполнение',{glass:'Стекло',sandwich:'Сэндвич-панель'})}<p class="remok-help">Нижний ярус глухой; деления соответствуют верхним секциям.</p>`:''}<h3>Верхние секции</h3><div class="remok-grid">${p.sections.map((_,i)=>`<div>${input(path+'.sections.'+i+'.widthMm','Секция '+(i+1)+', мм')}${select(path+'.sections.'+i+'.openingType','Тип открывания',d.balconyGlazingMaterial==='aluminum'?V.aluminumOpenings:S.openings)}</div>`).join('')}</div><p class="${valid?'remok-success':'remok-warning'}">Сумма секций: ${decimal(sum)} мм ${valid?'✓':'— не совпадает с общей шириной. Цена рассчитывается по габариту.'}</p>${btn('Разделить ширину поровну','equal-plane',`data-index="${index}"`)}${S.renderWindowSketch({...p,sketchPlane:true})}${planeFinish(path,p,'exterior')}${planeFinish(path,p,'interior')}</section>`;
+    return `<div class="remok-toggle remok-plane-tabs" role="tablist">${ids.map(id=>btn(V.planeNames[id],'plane-tab',`data-id="${id}" role="tab" aria-selected="${d.activePlaneId===id}"`)).join('')}</div><section class="remok-surface"><h2>${V.planeNames[p.id]}</h2><div class="remok-grid">${input(path+'.widthMm','Ширина плоскости, мм')}${input(path+'.heightMm','Высота плоскости, мм')}</div>${select(path+'.sectionCount','Количество секций',Object.fromEntries(Array.from({length:8},(_,i)=>[i+1,String(i+1)])))}${select(path+'.heightMode','Тип по высоте',{normal:'Обычное',floor:'В пол'})}${p.heightMode==='floor'?`<div class="remok-grid">${input(path+'.upperHeightMm','Высота верхнего яруса, мм')}${input(path+'.lowerHeightMm','Высота нижнего яруса, мм')}</div><p class="${C.positive(p.upperHeightMm)&&C.positive(p.lowerHeightMm)&&Math.abs(Number(p.upperHeightMm)+Number(p.lowerHeightMm)-Number(p.heightMm))<.01?'remok-success':'remok-warning'}">Общая высота: ${esc(p.heightMm)} мм. Сумма ярусов: ${Number(p.upperHeightMm)+Number(p.lowerHeightMm)} мм</p>${select(path+'.lowerFilling','Нижнее заполнение',{glass:'Стекло',sandwich:'Сэндвич-панель'})}<p class="remok-help">Нижний ярус глухой; деления соответствуют верхним секциям.</p>`:''}<h3>Верхние секции</h3><div class="remok-grid">${p.sections.map((_,i)=>`<div>${input(path+'.sections.'+i+'.widthMm','Секция '+(i+1)+', мм')}${openingField(path+'.sections.'+i,'Тип открывания',d.balconyGlazingMaterial==='aluminum')}</div>`).join('')}</div><p class="${valid?'remok-success':'remok-warning'}">Сумма секций: ${decimal(sum)} мм ${valid?'✓':'— не совпадает с общей шириной. Цена рассчитывается по габариту.'}</p>${btn('Разделить ширину поровну','equal-plane',`data-index="${index}"`)}${S.renderWindowSketch({...p,sketchPlane:true})}${planeFinish(path,p,'exterior')}${planeFinish(path,p,'interior')}</section>`;
   }
   function balconyGlazingEditor(d) {
     const r=C.product(d,pricing),pvc=d.balconyGlazingMaterial==='pvc';
     const preview=shape=>`<svg class="remok-shape-preview" viewBox="0 0 100 60" aria-hidden="true"><path d="${shape==='straight'?'M10 40H90':shape==='l'?'M10 10V45H90':'M10 10V45H90V10'}" fill="none" stroke="currentColor" stroke-width="4"/></svg>`;
-    return `<section class="remok-card remok-editing"><h1>Остекление балкона</h1>${select('draft.mode','Вид работ',L.types)}${input('draft.room','Помещение / название','text')}<h2>Тип конструкции</h2><div class="remok-toggle">${[['pvc','ПВХ'],['aluminum','Алюминий']].map(([k,t])=>btn(t,'balcony-material',`data-material="${k}" aria-pressed="${d.balconyGlazingMaterial===k}"`)).join('')}</div>${d.balconyGlazingMaterial?`<h2>Форма остекления</h2><div class="remok-type-grid">${Object.entries(V.shapes).map(([k,t])=>`<button type="button" class="remok-choice" data-action="balcony-shape" data-shape="${k}" aria-pressed="${d.balconyGlazingShape===k}">${preview(k)}<strong>${t}</strong></button>`).join('')}</div>${d.balconyGlazingShape==='l'?select('draft.sidePosition','Боковая сторона',{left:'Слева',right:'Справа'}):''}${d.balconyGlazingShape?`${pvc?select('draft.profile','Профиль',L.profiles,true)+select('draft.lamination','Ламинация',L.lamination):select('draft.aluminumColor','Цвет алюминия',L.aluminumColors)}${input('draft.hardware','Фурнитура','text',pricing.hardwareDefault)}${planeEditor(d)}`:''}`:''}<p>Общая площадь: ${decimal(r.area)} м²; стекло: ${decimal(r.glassArea)} м²; сэндвич: ${decimal(r.sandwichArea)} м²</p>${linesHTML(r.lines)}${errors([...new Set(r.errors)])}${totalHTML('Итого по изделию',r.total)}<div class="remok-actions">${btn('Сохранить изделие','save-product',r.errors.length?'disabled':'',true)}${btn('Отменить','cancel-product')}</div></section>`;
+    return `<section class="remok-card remok-editing"><h1>Остекление балкона</h1>${select('draft.mode','Вид работ',L.types)}${input('draft.room','Помещение / название','text')}<h2>Тип конструкции</h2><div class="remok-toggle">${[['pvc','ПВХ'],['aluminum','Алюминий']].map(([k,t])=>btn(t,'balcony-material',`data-material="${k}" aria-pressed="${d.balconyGlazingMaterial===k}"`)).join('')}</div>${d.balconyGlazingMaterial?`<h2>Форма остекления</h2><div class="remok-type-grid">${Object.entries(V.shapes).map(([k,t])=>`<button type="button" class="remok-choice" data-action="balcony-shape" data-shape="${k}" aria-pressed="${d.balconyGlazingShape===k}">${preview(k)}<strong>${t}</strong></button>`).join('')}</div>${d.balconyGlazingShape==='l'?select('draft.sidePosition','Боковая сторона',{left:'Слева',right:'Справа'}):''}${d.balconyGlazingShape?`${pvc?select('draft.profile','Профиль',R.profiles.options(d,pricing),true)+select('draft.lamination','Ламинация',L.lamination):select('draft.aluminumColor','Цвет алюминия',L.aluminumColors)}${input('draft.hardware','Фурнитура','text',pricing.hardwareDefault)}${planeEditor(d)}`:''}`:''}<p>Общая площадь: ${decimal(r.area)} м²; стекло: ${decimal(r.glassArea)} м²; сэндвич: ${decimal(r.sandwichArea)} м²</p>${linesHTML(r.lines)}${errors([...new Set(r.errors)])}${totalHTML('Итого по изделию',r.total)}<div class="remok-actions">${btn('Сохранить изделие','save-product',r.errors.length?'disabled':'',true)}${btn('Отменить','cancel-product')}</div></section>`;
   }
   function initializeBalcony(d) {
     d.balconyGlazingMaterial=d.balconyGlazingMaterial||'';d.balconyGlazingShape=d.balconyGlazingShape||'';d.sidePosition=d.sidePosition||'right';
@@ -3404,9 +3452,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
   }
   function sectionEditor(d) {
     const type = S.types[d.productType]; if (!type) return '';
-    if (V.modernBlock(d)) return select('draft.doorSide','Положение двери',{right:'Дверь справа',left:'Дверь слева'}) + d.sections.map((_,i) => select('draft.sections.'+i+'.openingType',i===0?'Открывание окна':'Открывание двери',S.openings)).join('') + sketchHTML(d);
+    if (V.modernBlock(d)) return select('draft.doorSide','Положение двери',{right:'Дверь справа',left:'Дверь слева'}) + '<p class="remok-help">Смена стороны двери зеркально меняет блок и выбранную сторону петель. Петли можно настроить отдельно.</p>' + d.sections.map((_,i) => openingField('draft.sections.'+i,i===0?'Открывание окна':'Открывание двери')).join('') + sketchHTML(d);
     const data = S.sectionData(d);
-    return `<div class="remok-section"><h3>Секции и открывание</h3>${type.balcony ? select('draft.doorSide', 'Положение двери', { right: 'Дверь справа', left: 'Дверь слева' }) : ''}<div class="remok-grid">${data.sections.map((_, i) => `<div class="remok-surface">${input('draft.sections.' + i + '.widthMm', type.balcony ? (i === 0 ? 'Ширина оконной части, мм' : 'Ширина двери, мм') : 'Ширина секции ' + (i + 1) + ', мм')}${select('draft.sections.' + i + '.openingType', 'Тип открывания', S.openings, true)}</div>`).join('')}</div><p class="${data.valid ? 'remok-success' : 'remok-warning'}">Сумма секций: ${decimal(data.sum)} мм · ${data.valid ? 'соответствует общей ширине' : 'не соответствует общей ширине; расчёт цены доступен'}</p>${btn('Разделить ширину поровну', 'equal-sections')}${S.renderWindowSketch(d)}</div>`;
+    return `<div class="remok-section"><h3>Секции и открывание</h3>${type.balcony ? select('draft.doorSide', 'Положение двери', { right: 'Дверь справа', left: 'Дверь слева' }) : ''}<div class="remok-grid">${data.sections.map((_, i) => `<div class="remok-surface">${input('draft.sections.' + i + '.widthMm', type.balcony ? (i === 0 ? 'Ширина оконной части, мм' : 'Ширина двери, мм') : 'Ширина секции ' + (i + 1) + ', мм')}${openingField('draft.sections.' + i, 'Тип открывания')}</div>`).join('')}</div><p class="${data.valid ? 'remok-success' : 'remok-warning'}">Сумма секций: ${decimal(data.sum)} мм · ${data.valid ? 'соответствует общей ширине' : 'не соответствует общей ширине; расчёт цены доступен'}</p>${btn('Разделить ширину поровну', 'equal-sections')}${S.renderWindowSketch(d)}</div>`;
   }
   function editorHTML() {
     const d = state.draft;
@@ -3417,22 +3465,22 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     if (d.mode === 'glazing') {
       if (S.types[d.productType]) {
         if (!Array.isArray(d.sections) || d.sections.length !== S.types[d.productType].count) {
-          d.sections = S.sectionData(d).sections.map(p => ({ widthMm: p.widthMm ?? '', openingType: p.openingType || '' }));
+          d.sections = S.sectionData(d).sections.map(p => ({ ...p, widthMm: p.widthMm ?? '', openingType: p.openingType || '' }));
         }
-        html += sectionEditor(d);
+        html += transomHTML(d) + sectionEditor(d);
       } else html += d.productType === '' ? '<p class="remok-help">Выберите тип изделия выше.</p>' : '<p class="remok-help">Тип изделия не указан. Для старого замера конфигурация не предполагается автоматически.</p>';
       html += input('draft.hardware', 'Фурнитура', 'text', pricing.hardwareDefault);
     }
     if (d.mode === 'aluminum') html += input('draft.hardware', 'Фурнитура', 'text', pricing.hardwareDefault) + aluminumEditor(d);
     if (dimensionsReady) {
       if (d.mode === 'glazing' || d.mode === 'aluminum') {
-        const price = d.mode === 'aluminum' ? C.calculateAluminum(d.width, d.height, d.aluminumColor || 'white', pricing) : C.calculateGlazing(V.measure(d).area * 1e6, 1, d.profile, pricing, d.lamination || 'none');
+        const price = d.mode === 'aluminum' ? C.calculateAluminum(d.width, d.height, d.aluminumColor || 'white', pricing) : C.calculateGlazing(V.measure(d).area * 1e6, 1, d.profile, R.profiles.forItem(d,pricing), d.lamination || 'none');
         if (d.mode === 'aluminum') html += select('draft.aluminumColor', 'Цвет алюминия', L.aluminumColors);
         else {
-          html += select('draft.profile', 'Профиль', L.profiles, true);
+          html += select('draft.profile', 'Профиль', R.profiles.options(d,pricing), true);
           if (d.profile) html += select('draft.lamination', 'Ламинация', L.lamination);
         }
-        if (price !== null) html += `<div class="remok-result"><span class="remok-success">✓ Остекление</span>${linesHTML([{ title: C.glazingDetail(d), detail: `${d.width} × ${d.height} мм · Площадь: ${decimal(V.measure(d).area)} м²`, price }])}</div><div class="remok-section">${yesno('draft.exterior.enabled', 'Нужна наружная отделка?')}</div>`;
+        if (price !== null) html += `<div class="remok-result"><span class="remok-success">✓ Остекление</span>${linesHTML([{ title: d.mode==='aluminum'?C.glazingDetail(d):R.profiles.name(d,pricing) + (d.lamination&&d.lamination!=='none'?' · '+L.lamination[d.lamination]:''), detail: `${d.width} × ${d.height} мм · Площадь: ${decimal(V.measure(d).area)} м²`, price }])}</div><div class="remok-section">${yesno('draft.exterior.enabled', 'Нужна наружная отделка?')}</div>`;
         if (price !== null && d.exterior.enabled) html += finishHTML('exterior');
         if (price !== null && partReady('exterior')) {
           html += `<div class="remok-section">${yesno('draft.interior.enabled', 'Нужна внутренняя отделка?')}</div>`;
@@ -3486,7 +3534,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
   function priceSignature() {
     // Compare composition as well as cost: equal-price replacements also need review.
     const b = clone(state.balcony); delete b.saved;
-    return JSON.stringify({ items: state.items, balcony: b, works: state.works,
+    // A compatibility snapshot is not a change in estimate composition.
+    const items=state.items.map(item=>{const copy=clone(item);delete copy.profileSnapshot;return copy;});
+    return JSON.stringify({ items, balcony: b, works: state.works,
       prices: state.items.map(i => C.product(i, pricing).total), balconyPrice: C.balcony(b, pricing).total });
   }
   function checkFixedPrice() {
@@ -3680,7 +3730,10 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     if (!path || el.tagName === 'BUTTON') return;
     if (path === 'client.phone') { el.value = formatPhone(el.value); }
     const value = el.type === 'checkbox' ? el.checked : el.type === 'number' ? (el.value === '' ? '' : Number(el.value)) : el.value;
+    const previous=get(path);
     set(path, value);
+    if(path==='draft.profile') { delete state.draft.profileSnapshot;R.profiles.capture(state.draft,pricing); }
+    if(path==='draft.doorSide' && previous && previous!==value) state.draft.sections?.forEach(s=>{if(s.hingeSide==='left')s.hingeSide='right';else if(s.hingeSide==='right')s.hingeSide='left';});
     if (path.startsWith('draft.planes.')) {
       const bits=path.split('.'), p=state.draft.planes[bits[2]];
       if (bits[3] === 'sectionCount' || bits[3] === 'widthMm' && p.sectionWidthsAuto) V.equalPlane(p);
@@ -3781,6 +3834,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       state.draft.interior.enabled = ['interior', 'both'].includes(el.dataset.kind);
     } else if (action === 'save-product') {
       if (state.draft.mode === 'glazing' && state.draft.productType === '') { notify('Выберите тип изделия.'); return; }
+      R.profiles.capture(state.draft,pricing);
       const result = C.product(state.draft, pricing);
       if (result.errors.length) { notify(result.errors[0]); return; }
       const index = state.items.findIndex(i => i.id === state.draft.id);

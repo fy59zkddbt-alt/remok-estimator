@@ -78,6 +78,28 @@
       electricity: { base: 5000, point: 2000 }, warmFloor: { base: 5000, rate: 1600 }
     }
   };
+  // Stable IDs retain compatibility with the previous fixed glazing keys.
+  R.DEFAULT_PRICING.pvcProfiles = Object.entries(R.labels.profiles).map(([id,name]) => ({id,name,pricePerM2:R.DEFAULT_PRICING.glazing[id]}));
+  R.profiles = {
+    adapt(pricing, saved) {
+      const source=Array.isArray(saved?.pvcProfiles)?saved.pvcProfiles:R.DEFAULT_PRICING.pvcProfiles.map(p=>({...p,pricePerM2:pricing.glazing[p.id]}));
+      const ids=new Set();
+      pricing.pvcProfiles=source.filter(p=>p&&typeof p.id==='string'&&/^[a-zA-Z0-9_-]+$/.test(p.id)&&!['__proto__','constructor','prototype'].includes(p.id)&&typeof p.name==='string'&&p.name.trim()&&typeof p.pricePerM2==='number'&&Number.isFinite(p.pricePerM2)&&p.pricePerM2>=0&&!ids.has(p.id)&&ids.add(p.id)).map(p=>({id:p.id,name:p.name.trim(),pricePerM2:p.pricePerM2}));
+      pricing.glazing=Object.fromEntries(pricing.pvcProfiles.map(p=>[p.id,p.pricePerM2]));
+      R.labels.profiles=Object.fromEntries(pricing.pvcProfiles.map(p=>[p.id,p.name]));
+      return pricing;
+    },
+    resolve(item, pricing=R.storage.pricing()) {
+      const active=pricing.pvcProfiles?.find(p=>p.id===item.profile);
+      const snapshot=item.profileSnapshot;
+      return active || (snapshot?.id===item.profile&&typeof snapshot.name==='string'&&typeof snapshot.pricePerM2==='number'&&Number.isFinite(snapshot.pricePerM2)&&snapshot.pricePerM2>=0?snapshot:null);
+    },
+    name(item,pricing) {return R.profiles.resolve(item,pricing)?.name || 'Не указан';},
+    capture(item,pricing) {if(item.mode==='glazing'||item.mode==='balcony-glazing'&&item.balconyGlazingMaterial==='pvc'){const p=R.profiles.resolve(item,pricing);if(p)item.profileSnapshot={...p};}},
+    forItem(item,pricing) {const p=R.profiles.resolve(item,pricing);return p?{...pricing,glazing:{...pricing.glazing,[p.id]:p.pricePerM2}}:pricing;},
+    options(item,pricing) {const list=pricing.pvcProfiles.map(p=>[p.id,p.name]);const p=R.profiles.resolve(item,pricing);if(p&&!list.some(([id])=>id===p.id))list.push([p.id,p.name+' (удалён из настроек)']);return Object.fromEntries(list);}
+  };
+
 })();
 
 // ===== storage =====
@@ -98,7 +120,7 @@
     });
     return result;
   }
-  R.storage = { read, write, pricing: () => merge(R.DEFAULT_PRICING, read('pricing')) };
+  R.storage = { read, write, pricing: () => { const saved=read('pricing'); return R.profiles.adapt(merge(R.DEFAULT_PRICING, saved), saved); } };
 })();
 
 // ===== settings =====
@@ -111,10 +133,10 @@
   const interiorLabels = { sillExtra: 'Прибавка к ширине подоконника, м', bfkRate: 'БФК: ставка', bfkFixed: 'БФК: постоянная часть', mollerRate: 'Möller: ставка', mollerLDRate: 'Möller LD: ставка', mollerFixed: 'Möller: постоянная часть', sandwichRate: 'Сэндвич: ставка', sandwichFixed: 'Сэндвич: постоянная часть', qunellWhiteRate: 'Qunell белый: ставка', qunellColorRate: 'Qunell цветной: ставка', qunellFixed: 'Qunell: постоянная часть', whiteExtra: 'Qunell белый: доплата', colorExtra: 'Qunell цветной: доплата', sandwichDivisor: 'Сэндвич: делитель', qunellDivisor: 'Qunell / Möller: делитель', bfkDivisor: 'Отдельный БФК: делитель', work2500: 'Работа: базовая группа 2500', work3000: 'Работа: базовая группа 3000', work3500: 'Работа: базовая группа 3500', work1500: 'Работа: базовая группа 1500', paintMultiplier: 'Внутренний множитель покраски', paintRate: 'Покраска: ставка, ₽/м²', multiplier: 'Финальный множитель' };
   function get(path) { return path.split('.').reduce((o, k) => o[k], pricing); }
   const esc = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-  function field(path, label) { if (typeof get(path) === 'string') return `<label class="remok-field">${label}<input type="text" required data-price="${path}" value="${esc(get(path))}"></label>`; return `<label class="remok-field">${label}<input type="number" inputmode="decimal" step="any" min="${/divisor/i.test(path) ? '0.000001' : '0'}" required data-price="${path}" value="${get(path)}"></label>`; }
+  function field(path, label) { if (path === 'hardwareDefault' || path.endsWith('.name')) return `<label class="remok-field">${label}<input type="text" required data-price="${path}" value="${esc(get(path))}"></label>`; return `<label class="remok-field">${label}<input type="number" inputmode="decimal" step="any" min="${/divisor/i.test(path) ? '0.000001' : '0'}" required data-price="${path}" value="${get(path)}"></label>`; }
   function section(title, content) { return `<section class="remok-card"><h2>${title}</h2><div class="remok-grid">${content}</div></section>`; }
   function render() {
-    fields.innerHTML = section('Остекление', Object.entries(R.labels.profiles).map(([k, v]) => field('glazing.' + k, v + ', ₽/м²')).join(''))
+    fields.innerHTML = `<section class="remok-card"><h2>Пластиковые профили</h2>${pricing.pvcProfiles.map((p,i)=>`<div class="remok-profile-row"><div class="remok-grid">${field('pvcProfiles.'+i+'.name','Название профиля')}${field('pvcProfiles.'+i+'.pricePerM2','Цена, ₽/м²')}</div><button type="button" data-delete-profile="${esc(p.id)}">Удалить профиль</button></div>`).join('')}<button type="button" data-add-profile>+ Добавить профиль</button></section>`
       + section('Монтаж и заполнение', field('installationDisplayRatePerM2', 'Монтаж с расходными материалами, ₽/м² (выделяется из цены)') + field('sandwichDiscountPerM2', 'Снижение стоимости при сэндвич-панели, ₽/м²'))
       + section('Фурнитура', field('hardwareDefault', 'Фурнитура по умолчанию'))
       + section('Ламинация ПВХ', field('lamination.oneSideLaminationCoefficient', 'Односторонняя ламинация, коэффициент') + field('lamination.twoSideLaminationCoefficient', 'Двусторонняя ламинация, коэффициент'))
@@ -127,20 +149,41 @@
       + section('Электрика', field('balcony.electricity.base', 'Завести электрику, ₽') + field('balcony.electricity.point', 'Одна точка, ₽'))
       + section('Тёплый пол', field('balcony.warmFloor.base', 'Фиксированная часть, ₽') + field('balcony.warmFloor.rate', 'Стоимость за м², ₽'));
   }
-  form.addEventListener('submit', e => {
+  function collectDraft() {
+    fields.querySelectorAll('[data-price]').forEach(el=>{const keys=el.dataset.price.split('.'),key=keys.pop();keys.reduce((o,k)=>o[k],pricing)[key]=el.type==='text'?el.value:el.value===''?'':Number(el.value);});
+  }
+  function preserveSnapshots() {
+    const estimate=R.storage.read('estimate');if(!estimate)return true;
+    const previous=R.storage.pricing();
+    (estimate.items||[]).forEach(item=>R.profiles.capture(item,previous));if(estimate.draft)R.profiles.capture(estimate.draft,previous);
+    if(R.storage.write('estimate',estimate))return true;
+    status.textContent='Не удалось сохранить параметры профилей в текущем замере. Настройки не изменены.';return false;
+  }
+  fields.addEventListener('click',e=>{
+    const add=e.target.closest('[data-add-profile]'),remove=e.target.closest('[data-delete-profile]');if(!add&&!remove)return;
+    collectDraft();
+    if(add)pricing.pvcProfiles.push({id:'pvc-'+(globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)),name:'Новый профиль',pricePerM2:0});
+    else pricing.pvcProfiles=pricing.pvcProfiles.filter(p=>p.id!==remove.dataset.deleteProfile);
+    render();
+  });
+  form.addEventListener('submit' , e => {
     e.preventDefault();
     if (!form.reportValidity()) return;
     for (const el of fields.querySelectorAll('[data-price]')) {
       const value = el.type === 'text' ? el.value.trim() : Number(el.value); if (el.type === 'text' ? !value : !Number.isFinite(value)) { status.textContent = 'Проверьте числовые значения.'; return; }
       const parts = el.dataset.price.split('.'), key = parts.pop(); parts.reduce((o, k) => o[k], pricing)[key] = value;
     }
+    if (!preserveSnapshots()) return;
+    pricing=R.profiles.adapt(pricing,pricing);
     const ok = R.storage.write('pricing', pricing);
     status.textContent = ok ? '✓ Настройки сохранены. Можно вернуться к замеру.' : 'Не удалось сохранить настройки в браузере.';
     status.className = ok ? 'remok-success' : 'remok-error';
   });
   document.getElementById('remok-reset').addEventListener('click', () => {
     if (!confirm('Вернуть значения цен по умолчанию? Текущие настройки будут заменены.')) return;
+    if (!preserveSnapshots()) return;
     pricing = JSON.parse(JSON.stringify(R.DEFAULT_PRICING));
+    pricing=R.profiles.adapt(pricing,pricing);
     const ok = R.storage.write('pricing', pricing); render();
     status.textContent = ok ? 'Значения по умолчанию восстановлены и сохранены.' : 'Не удалось сохранить настройки в браузере.';
     status.className = ok ? 'remok-success' : 'remok-error';

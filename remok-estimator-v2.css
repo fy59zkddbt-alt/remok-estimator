@@ -138,3 +138,5 @@
 #remok-estimator .remok-plane-tabs { flex-wrap:wrap; margin:20px 0; }
 #remok-estimator .remok-plane-tabs [aria-selected="true"] { outline:2px solid #252b32; }
 #remok-estimator .remok-plane-sketch { break-inside:avoid; margin:20px 0; }
+
+#remok-estimator .remok-profile-row { padding:16px 0; margin-bottom:16px; border-bottom:1px solid var(--line); }

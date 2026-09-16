@@ -1,0 +1,25 @@
+<!-- T123: REMOK V2. Реальные CDN URL; увеличивайте ?v=2 при следующих обновлениях V2. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fy59zkddbt-alt/remok-estimator@main/remok-estimator-v2.css?v=2">
+<div id="remok-estimator" lang="ru">
+  <header class="remok-header">
+    <a class="remok-brand" href="/calc">REMOK<span>Расчёт замера</span></a>
+    <a href="/calc">← Вернуться к замеру</a>
+  </header>
+  <main>
+    <div class="remok-page-title">
+      <span class="remok-eyebrow">Параметры расчёта</span>
+      <h1>Настройки цен</h1>
+      <p>Изменения применяются и к текущему замеру после сохранения.</p>
+    </div>
+    <form id="remok-settings">
+      <div id="remok-price-fields"></div>
+      <div class="remok-actions">
+        <button type="submit" class="remok-primary">Сохранить настройки</button>
+        <button type="button" id="remok-reset">Вернуть значения по умолчанию</button>
+      </div>
+      <p id="remok-settings-status" role="status"></p>
+    </form>
+  </main>
+  <footer class="remok-footer">ООО «Ремок» <span>Цены сохраняются в данном браузере</span></footer>
+</div>
+<script defer src="https://cdn.jsdelivr.net/gh/fy59zkddbt-alt/remok-estimator@main/remok-settings-v2.js?v=2"></script>
