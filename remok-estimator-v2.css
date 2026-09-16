@@ -1,0 +1,140 @@
+#remok-estimator { --ink:#252b32; --muted:#66707b; --line:#dce1e6; --paper:#fff; --bg:#f3f5f7; font-family:Inter,Segoe UI,Arial,sans-serif; color:var(--ink); background:var(--bg); font-size:16px; line-height:1.5; min-height:100vh; margin:0; padding:0 20px; box-sizing:border-box; }
+#remok-estimator * { box-sizing:border-box; }
+#remok-estimator [hidden] { display:none!important; }
+#remok-estimator .remok-header { max-width:920px; margin:auto; min-height:100px; display:flex; justify-content:space-between; align-items:center; gap:20px; border-bottom:1px solid var(--line); }
+#remok-estimator a { color:var(--ink); text-underline-offset:4px; }
+#remok-estimator .remok-brand { font-size:26px; font-weight:850; letter-spacing:1.5px; text-decoration:none; line-height:1.1; }
+#remok-estimator .remok-brand span { display:block; font-size:13px; font-weight:400; letter-spacing:0; color:var(--muted); margin-top:7px; }
+#remok-estimator nav { display:flex; align-items:center; gap:24px; font-size:14px; }
+#remok-estimator main { max-width:920px; margin:0 auto; padding:36px 0 56px; }
+#remok-estimator h1 { font-size:32px; line-height:1.2; letter-spacing:-.7px; margin:8px 0 12px; }
+#remok-estimator h2 { font-size:23px; line-height:1.3; margin:0 0 20px; letter-spacing:-.4px; }
+#remok-estimator h3 { font-size:18px; line-height:1.4; margin:0 0 16px; }
+#remok-estimator p { margin:8px 0 16px; }
+#remok-estimator .remok-page-title { margin-bottom:28px; }
+#remok-estimator .remok-page-title p, #remok-estimator .remok-muted { color:var(--muted); }
+#remok-estimator .remok-eyebrow { font-size:12px; text-transform:uppercase; letter-spacing:1.5px; font-weight:650; color:var(--muted); }
+#remok-estimator .remok-card { background:var(--paper); border:1px solid var(--line); border-radius:14px; padding:28px; margin:0 0 20px; box-shadow:0 2px 4px #182b4003; }
+#remok-estimator .remok-editing { border-top:3px solid var(--ink); }
+#remok-estimator .remok-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+#remok-estimator .remok-full { grid-column:1/-1; }
+#remok-estimator label.remok-field { display:flex; flex-direction:column; gap:7px; font-size:14px; font-weight:550; min-width:0; margin-bottom:16px; }
+#remok-estimator input:not([type=checkbox]), #remok-estimator select, #remok-estimator textarea { width:100%; min-width:0; height:48px; border:1px solid #cbd2d9; border-radius:8px; padding:11px 12px; font:inherit; font-size:16px; font-weight:400; color:var(--ink); background:#fff; }
+#remok-estimator textarea { height:90px; resize:vertical; }
+#remok-estimator input::placeholder, #remok-estimator textarea::placeholder { color:#8a929b; }
+#remok-estimator :focus-visible { outline:3px solid #72889e; outline-offset:3px; }
+#remok-estimator button { min-height:48px; border:1px solid #cbd2d9; border-radius:8px; padding:11px 18px; background:#fff; color:var(--ink); font:inherit; font-size:15px; font-weight:600; cursor:pointer; transition:background .15s; }
+#remok-estimator button:hover { background:#edf0f3; }
+#remok-estimator button:disabled { opacity:.45; cursor:not-allowed; }
+#remok-estimator .remok-primary { color:white; background:var(--ink); border-color:var(--ink); }
+#remok-estimator .remok-primary:hover { background:#404b57; }
+#remok-estimator .remok-link { border:0; padding:8px 0; background:transparent; text-decoration:underline; text-underline-offset:4px; font-size:14px; font-weight:400; }
+#remok-estimator .remok-choice { text-align:left; padding:24px; border-radius:12px; min-height:124px; display:flex; flex-direction:column; justify-content:center; gap:8px; }
+#remok-estimator .remok-choice strong { font-size:20px; }
+#remok-estimator .remok-choice span { font-size:14px; color:var(--muted); font-weight:400; }
+#remok-estimator .remok-actions, #remok-estimator .remok-toggle { display:flex; flex-wrap:wrap; gap:10px; }
+#remok-estimator .remok-toggle { margin-bottom:20px; }
+#remok-estimator .remok-toggle button { min-width:90px; flex:1; }
+#remok-estimator button[aria-pressed=true] { border-color:var(--ink); background:#edf0f3; box-shadow:inset 0 0 0 1px var(--ink); }
+#remok-estimator .remok-section { border-top:1px solid var(--line); padding-top:24px; margin-top:24px; }
+#remok-estimator .remok-check { display:flex; gap:12px; align-items:center; min-height:48px; padding:10px 12px; border:1px solid var(--line); border-radius:8px; cursor:pointer; margin-bottom:12px; font-size:15px; }
+#remok-estimator input[type=checkbox] { width:23px; height:23px; flex:0 0 23px; margin:0; accent-color:var(--ink); }
+#remok-estimator .remok-check:has(input:checked) { background:#f0f3f5; border-color:#8a96a2; }
+#remok-estimator .remok-help { font-size:13px; color:var(--muted); margin:4px 0 16px; }
+#remok-estimator .remok-warning, #remok-estimator .remok-error { font-size:14px; color:#a33232; padding:10px 12px; border-radius:8px; background:#fff2f1; margin:8px 0 14px; }
+#remok-estimator .remok-warning:empty { display:none; }
+#remok-estimator .remok-success { color:#287148; font-size:14px; font-weight:600; }
+#remok-estimator .remok-result { padding:16px; background:#f3f5f7; border-radius:9px; margin:16px 0; }
+#remok-estimator .remok-row { display:flex; justify-content:space-between; align-items:baseline; gap:16px; padding:12px 0; }
+#remok-estimator .remok-row > :first-child { min-width:0; overflow-wrap:anywhere; }
+#remok-estimator .remok-row > strong { white-space:nowrap; }
+#remok-estimator .remok-row small { display:block; color:var(--muted); font-size:14px; font-weight:400; margin-top:3px; }
+#remok-estimator .remok-total { border-top:1px solid var(--line); margin-top:10px; font-size:18px; font-weight:650; }
+#remok-estimator .remok-total strong { font-size:25px; letter-spacing:-.4px; }
+#remok-estimator .remok-grand { background:var(--ink); color:#fff; border:0; }
+#remok-estimator .remok-grand .remok-total { border-color:#59636f; }
+#remok-estimator .remok-grand .remok-total strong { font-size:34px; }
+#remok-estimator .remok-summary { background:#e8edf1; border-radius:8px; padding:12px 16px; display:flex; justify-content:space-between; gap:12px; margin-bottom:24px; font-size:14px; }
+#remok-estimator .remok-surface { border:1px solid var(--line); border-radius:10px; padding:20px; margin:16px 0; }
+#remok-estimator .remok-opening { padding:16px; background:#f3f5f7; border-radius:8px; margin:12px 0; }
+#remok-estimator .remok-danger { color:#a33232; }
+#remok-estimator details > summary { cursor:pointer; min-height:48px; padding:8px 0; font-weight:600; }
+#remok-estimator .remok-footer { max-width:920px; margin:auto; border-top:1px solid var(--line); padding:20px 0 32px; color:var(--muted); font-size:12px; display:flex; justify-content:space-between; gap:16px; }
+#remok-estimator .remok-toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); max-width:90vw; width:max-content; padding:14px 22px; border-radius:10px; background:#252b32; color:white; box-shadow:0 4px 25px #0002; z-index:10; }
+@media(max-width:600px) {
+  #remok-estimator { padding:0 16px; }
+  #remok-estimator .remok-header { min-height:92px; gap:12px; }
+  #remok-estimator .remok-brand { font-size:23px; }
+  #remok-estimator nav { gap:0; flex-direction:column; align-items:flex-end; }
+  #remok-estimator nav a { min-height:36px; display:flex; align-items:center; }
+  #remok-estimator nav button { min-height:36px; }
+  #remok-estimator main { padding-top:26px; }
+  #remok-estimator h1 { font-size:28px; }
+  #remok-estimator h2 { font-size:21px; }
+  #remok-estimator .remok-grid { grid-template-columns:1fr; gap:0; }
+  #remok-estimator .remok-grid:has(.remok-choice) { gap:12px; }
+  #remok-estimator .remok-card { padding:20px 16px; border-radius:11px; }
+  #remok-estimator .remok-choice { min-height:112px; padding:20px; }
+  #remok-estimator .remok-actions > button { flex:1 1 100%; }
+  #remok-estimator .remok-row { gap:10px; }
+  #remok-estimator .remok-total { flex-wrap:wrap; }
+  #remok-estimator .remok-surface { padding:14px 12px; }
+  #remok-estimator .remok-opening { padding:12px; }
+  #remok-estimator .remok-footer { flex-direction:column; gap:4px; }
+}
+@media(prefers-reduced-motion:reduce) { #remok-estimator * { transition:none!important; scroll-behavior:auto!important; } }
+#remok-estimator .remok-document { background:#fff; padding:32px; border:1px solid var(--line); border-radius:12px; }
+#remok-estimator .remok-document-client { margin:24px 0; padding-bottom:20px; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
+#remok-estimator .remok-document-client p { margin:5px 0; }
+#remok-estimator .remok-document-card { padding:20px 0; border:0; border-bottom:1px solid var(--line); border-radius:0; box-shadow:none; }
+#remok-estimator .remok-document-card h2 { font-size:20px; margin-bottom:8px; }
+#remok-estimator .remok-document-row { display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin:12px 0; }
+#remok-estimator .remok-document-row span { min-width:0; overflow-wrap:anywhere; }
+#remok-estimator .remok-document-row strong { white-space:nowrap; }
+#remok-estimator .remok-document-totals { border:0; }
+@media(max-width:600px) {
+  #remok-estimator .remok-document { padding:20px 14px; }
+  #remok-estimator .remok-document-row { flex-wrap:wrap; gap:4px 12px; }
+  #remok-estimator .remok-document-row strong { margin-left:auto; }
+  #remok-estimator #remok-discount .remok-toggle { flex-direction:column; }
+}
+@page remok-estimate { size:A4; margin:15mm; }
+#remok-estimator .remok-type-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:16px 0; }
+#remok-estimator .remok-type-grid .remok-choice { display:flex; flex-direction:column; justify-content:center; padding:12px; min-width:0; }
+#remok-estimator .remok-type-grid [aria-pressed="true"] { outline:2px solid var(--accent,#c54435); background:#fff5f1; }
+#remok-estimator .remok-sketch { margin:16px auto; width:100%; max-width:480px; color:#111; }
+#remok-estimator .remok-sketch svg { display:block; width:100%; height:auto; max-height:320px; }
+#remok-estimator .remok-sketch text { font:18px Arial,sans-serif; fill:currentColor; stroke:none; text-anchor:middle; }
+#remok-estimator .remok-sketch figcaption { font-size:12px; line-height:1.5; color:#555; margin-top:4px; }
+#remok-estimator .remok-type-grid .remok-sketch { margin:0; }
+#remok-estimator .remok-characteristics { overflow-wrap:anywhere; margin:12px 0 20px; }
+#remok-estimator .remok-characteristics p { margin:5px 0; }
+@media(max-width:600px) {
+  #remok-estimator .remok-type-grid { grid-template-columns:1fr; }
+  #remok-estimator .remok-type-grid .remok-choice { flex-direction:row; align-items:center; gap:12px; text-align:left; min-height:112px; }
+  #remok-estimator .remok-type-grid .remok-sketch { width:45%; flex-shrink:0; }
+}
+@media print {
+  #remok-estimator .remok-document-actions { display:none!important; }
+  #remok-estimator .remok-sketch { max-width:100mm; margin:2mm auto; break-inside:avoid; }
+  #remok-estimator { page:remok-estimate; }
+  #remok-estimator { background:#fff!important; color:#000!important; margin:0; padding:0; min-height:0; font-size:10pt; }
+  #remok-estimator * { color:#000!important; background:transparent!important; box-shadow:none!important; text-shadow:none!important; }
+  #remok-estimator .remok-header, #remok-estimator nav, #remok-estimator .remok-footer,
+  #remok-estimator .remok-summary, #remok-estimator button, #remok-estimator .remok-actions,
+  #remok-estimator .remok-toast { display:none!important; }
+  #remok-estimator main { max-width:none; padding:0; margin:0; }
+  #remok-estimator .remok-document { padding:0; border:0; border-radius:0; }
+  #remok-estimator .remok-document h1 { font-size:22pt; margin:0 0 8mm; }
+  #remok-estimator .remok-document-card { break-inside:avoid; page-break-inside:avoid; padding:4mm 0; margin:0 0 4mm; border-color:#aaa; }
+  #remok-estimator .remok-document-card h2 { font-size:13pt; break-after:avoid; }
+  #remok-estimator .remok-document-client { margin:0 0 5mm; padding-bottom:4mm; }
+  #remok-estimator .remok-document-row { flex-wrap:nowrap; margin:3mm 0; }
+  #remok-estimator .remok-total { font-size:11pt; }
+  #remok-estimator .remok-total strong { font-size:14pt; }
+}
+
+#remok-estimator .remok-shape-preview { width:100px; height:60px; flex-shrink:0; }
+#remok-estimator .remok-plane-tabs { flex-wrap:wrap; margin:20px 0; }
+#remok-estimator .remok-plane-tabs [aria-selected="true"] { outline:2px solid #252b32; }
+#remok-estimator .remok-plane-sketch { break-inside:avoid; margin:20px 0; }
