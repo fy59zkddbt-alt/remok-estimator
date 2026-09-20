@@ -140,3 +140,11 @@
 #remok-estimator .remok-plane-sketch { break-inside:avoid; margin:20px 0; }
 
 #remok-estimator .remok-profile-row { padding:16px 0; margin-bottom:16px; border-bottom:1px solid var(--line); }
+
+#remok-estimator .remok-item-summary { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; padding:12px; margin:12px 0; background:#f5f6f7; border-radius:8px; overflow-wrap:anywhere; }
+#remok-estimator .remok-product-card { border-left:4px solid var(--accent,#c54435); }
+#remok-estimator .remok-works { border-top:1px solid var(--line); padding-top:16px; }
+#remok-estimator .remok-works .remok-surface { margin-bottom:12px; }
+#remok-estimator .remok-sketch svg { max-height:none; }
+#remok-estimator .remok-type-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+@media(max-width:600px) { #remok-estimator .remok-type-grid { grid-template-columns:1fr; } }
