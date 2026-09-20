@@ -3365,6 +3365,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
   'use strict';
   const R = window.Remok, C = R.calc, L = R.labels, S = R.windowSketch, V = R.v2;
   const root = document.getElementById('remok-estimator'), main = document.getElementById('remok-main');
+  const mainTypes = { ...L.types, balcony: 'Отделка балкона' };
   let pricing = R.storage.pricing(), toastTimer;
   const clone = o => JSON.parse(JSON.stringify(o));
   const id = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
@@ -3460,7 +3461,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
   function balconyGlazingEditor(d) {
     const r=C.product(d,pricing),pvc=d.balconyGlazingMaterial==='pvc';
     const preview=shape=>`<svg class="remok-shape-preview" viewBox="0 0 100 60" aria-hidden="true"><path d="${shape==='straight'?'M10 40H90':shape==='l'?'M10 10V45H90':'M10 10V45H90V10'}" fill="none" stroke="currentColor" stroke-width="4"/></svg>`;
-    return `<section class="remok-card remok-editing"><h1>Остекление балкона</h1>${itemSummary(d,r)}${select('draft.mode','Вид работ',L.types)}${input('draft.room','Помещение / название','text')}<h2>Тип конструкции</h2><div class="remok-toggle">${[['pvc','ПВХ'],['aluminum','Алюминий']].map(([k,t])=>btn(t,'balcony-material',`data-material="${k}" aria-pressed="${d.balconyGlazingMaterial===k}"`)).join('')}</div>${d.balconyGlazingMaterial?`<h2>Форма остекления</h2><div class="remok-type-grid">${Object.entries(V.shapes).map(([k,t])=>`<button type="button" class="remok-choice" data-action="balcony-shape" data-shape="${k}" aria-pressed="${d.balconyGlazingShape===k}">${preview(k)}<strong>${t}</strong></button>`).join('')}</div>${d.balconyGlazingShape==='l'?select('draft.sidePosition','Боковая сторона',{left:'Слева',right:'Справа'}):''}${d.balconyGlazingShape?`${pvc?select('draft.profile','Профиль',R.profiles.options(d,pricing),true)+select('draft.lamination','Ламинация',L.lamination):select('draft.aluminumColor','Цвет алюминия',L.aluminumColors)}${input('draft.hardware','Фурнитура','text',pricing.hardwareDefault)}${planeEditor(d)}`:''}`:''}<p>Общая площадь: ${decimal(r.area)} м²; стекло: ${decimal(r.glassArea)} м²; сэндвич: ${decimal(r.sandwichArea)} м²</p>${linesHTML(r.lines)}${errors([...new Set(r.errors)])}${worksHTML('draft.additionalWorks','Дополнительные работы изделия')}${totalHTML('Итого по изделию',r.total)}<div class="remok-actions">${btn('Сохранить изделие','save-product',r.errors.length?'disabled':'',true)}${btn('Отменить','cancel-product')}</div></section>`;
+    return `<section class="remok-card remok-editing"><h1>Остекление балкона</h1>${itemSummary(d,r)}${select('draft.mode','Вид работ',mainTypes)}${input('draft.room','Помещение / название','text')}<h2>Тип конструкции</h2><div class="remok-toggle">${[['pvc','ПВХ'],['aluminum','Алюминий']].map(([k,t])=>btn(t,'balcony-material',`data-material="${k}" aria-pressed="${d.balconyGlazingMaterial===k}"`)).join('')}</div>${d.balconyGlazingMaterial?`<h2>Форма остекления</h2><div class="remok-type-grid">${Object.entries(V.shapes).map(([k,t])=>`<button type="button" class="remok-choice" data-action="balcony-shape" data-shape="${k}" aria-pressed="${d.balconyGlazingShape===k}">${preview(k)}<strong>${t}</strong></button>`).join('')}</div>${d.balconyGlazingShape==='l'?select('draft.sidePosition','Боковая сторона',{left:'Слева',right:'Справа'}):''}${d.balconyGlazingShape?`${pvc?select('draft.profile','Профиль',R.profiles.options(d,pricing),true)+select('draft.lamination','Ламинация',L.lamination):select('draft.aluminumColor','Цвет алюминия',L.aluminumColors)}${input('draft.hardware','Фурнитура','text',pricing.hardwareDefault)}${planeEditor(d)}`:''}`:''}<p>Общая площадь: ${decimal(r.area)} м²; стекло: ${decimal(r.glassArea)} м²; сэндвич: ${decimal(r.sandwichArea)} м²</p>${linesHTML(r.lines)}${errors([...new Set(r.errors)])}${worksHTML('draft.additionalWorks','Дополнительные работы изделия')}${totalHTML('Итого по изделию',r.total)}<div class="remok-actions">${btn('Сохранить изделие','save-product',r.errors.length?'disabled':'',true)}${btn('Отменить','cancel-product')}</div></section>`;
   }
   function initializeBalcony(d) {
     d.balconyGlazingMaterial=d.balconyGlazingMaterial||'';d.balconyGlazingShape=d.balconyGlazingShape||'';d.sidePosition=d.sidePosition||'right';
@@ -3500,7 +3501,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     if (d.mode === 'balcony-glazing') { initializeBalcony(d); return balconyGlazingEditor(d); }
     if(V.modernBlock(d) && !d.windows) initializeBlock(d);
     const dimensionsReady = C.area(d.width, d.height) !== null && (!V.modernBlock(d) || !V.measure(d).errors.length), r = C.product(d, pricing);
-    let html = `<section class="remok-card remok-editing"><span class="remok-eyebrow">${L.types[d.mode]}</span><h1>Изделие №${d.number}</h1>${select('draft.mode', 'Вид работ', L.types)}${input('draft.room', 'Помещение / название', 'text', 'Например: кухня')}${itemSummary(d,r)}${d.mode === 'glazing' ? typeChoices(d) : ''}${V.modernBlock(d) ? blockDimensions(d) : `<div class="remok-grid">${input('draft.width', 'Ширина, мм')}${input('draft.height', 'Высота, мм')}</div>${warning([d.width,d.height])}`}`;
+    let html = `<section class="remok-card remok-editing"><span class="remok-eyebrow">${L.types[d.mode]}</span><h1>Изделие №${d.number}</h1>${select('draft.mode', 'Вид работ', mainTypes)}${input('draft.room', 'Помещение / название', 'text', 'Например: кухня')}${itemSummary(d,r)}${d.mode === 'glazing' ? typeChoices(d) : ''}${V.modernBlock(d) ? blockDimensions(d) : `<div class="remok-grid">${input('draft.width', 'Ширина, мм')}${input('draft.height', 'Высота, мм')}</div>${warning([d.width,d.height])}`}`;
     if (d.mode === 'glazing') {
       if (S.types[d.productType]) {
         if (!Array.isArray(d.sections) || d.sections.length !== S.types[d.productType].count) {
@@ -3764,6 +3765,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     } else R.pdf?.releaseLink();
   }
   function go(step) { state.step = step; persist(); render(); main.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); }
+  function openBalcony() { state.balcony.enabled = true; state.balcony.saved = false; go('balcony'); }
   function begin(mode) {
     const part = () => ({ enabled: null, type: '', depth: '', depthChecked: false, hasDepthDifference: false, comment: '' });
     state.draft = { id: id(), number: state.nextNumber, room: '', additionalWorks: [], width: '', height: '', mode, profile: '', lamination: 'none', aluminumColor: 'white', finishKind: '', exterior: part(), interior: part() };
@@ -3777,6 +3779,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     if (!path || el.tagName === 'BUTTON') return;
     if (path === 'client.phone') { el.value = formatPhone(el.value); }
     const value = el.type === 'checkbox' ? el.checked : el.type === 'number' ? (el.value === '' ? '' : Number(el.value)) : el.value;
+    // Balcony finish has its own existing state/editor; do not turn the draft into a glazing item of an unknown mode.
+    if (path === 'draft.mode' && value === 'balcony') { openBalcony(); return; }
     const previous=get(path);
     set(path, value);
     if(path==='draft.profile') { delete state.draft.profileSnapshot;R.profiles.capture(state.draft,pricing); }
@@ -3914,7 +3918,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       state.items = state.items.filter(i => i.id !== el.dataset.id);
       if (!state.items.length && state.step === 'saved') { go('start'); return; }
     } else if (action === 'continue') { go('estimate'); return; }
-    else if (action === 'edit-balcony') { state.balcony.enabled = true; state.balcony.saved = false; go('balcony'); return; }
+    else if (action === 'edit-balcony') { openBalcony(); return; }
     else if (action === 'skip-balcony') {
       if (state.balcony.enabled && !confirm('Не включать отделку балкона в смету? Введённые размеры сохранятся.')) return;
       state.balcony.enabled = false; state.balcony.saved = false; go('estimate'); return;
