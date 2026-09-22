@@ -78,26 +78,35 @@
       electricity: { base: 5000, point: 2000 }, warmFloor: { base: 5000, rate: 1600 }
     }
   };
-  // Stable IDs retain compatibility with the previous fixed glazing keys.
+  // Retain stable IDs and legacy fields; normalize new pricing fields in memory.
   R.DEFAULT_PRICING.pvcProfiles = Object.entries(R.labels.profiles).map(([id,name]) => ({id,name,pricePerM2:R.DEFAULT_PRICING.glazing[id]}));
   R.profiles = {
-    adapt(pricing, saved) {
-      const source=Array.isArray(saved?.pvcProfiles)?saved.pvcProfiles:R.DEFAULT_PRICING.pvcProfiles.map(p=>({...p,pricePerM2:pricing.glazing[p.id]}));
-      const ids=new Set();
-      pricing.pvcProfiles=source.filter(p=>p&&typeof p.id==='string'&&/^[a-zA-Z0-9_-]+$/.test(p.id)&&!['__proto__','constructor','prototype'].includes(p.id)&&typeof p.name==='string'&&p.name.trim()&&typeof p.pricePerM2==='number'&&Number.isFinite(p.pricePerM2)&&p.pricePerM2>=0&&!ids.has(p.id)&&ids.add(p.id)).map(p=>({id:p.id,name:p.name.trim(),pricePerM2:p.pricePerM2}));
-      pricing.glazing=Object.fromEntries(pricing.pvcProfiles.map(p=>[p.id,p.pricePerM2]));
-      R.labels.profiles=Object.fromEntries(pricing.pvcProfiles.map(p=>[p.id,p.name]));
-      return pricing;
+    normalize(p,pricing=R.DEFAULT_PRICING) {
+      const valid=n=>typeof n==='number'&&Number.isFinite(n)&&n>=0;
+      const base=p.basePricePerM2??p.pricePerM2??R.DEFAULT_PRICING.glazing[p.id]??0;
+      const one=Math.max(0,((pricing.lamination?.oneSideLaminationCoefficient??1.3)-1)*100);
+      const two=Math.max(0,((pricing.lamination?.twoSideLaminationCoefficient??1.5)-1)*100);
+      return {...p,basePricePerM2:valid(base)?base:0,
+        activityPercent:valid(p.activityPercent)?p.activityPercent:0,
+        laminateOneSidePercent:valid(p.laminateOneSidePercent)?p.laminateOneSidePercent:Number(one.toFixed(8)),
+        laminateTwoSidesPercent:valid(p.laminateTwoSidesPercent)?p.laminateTwoSidesPercent:Number(two.toFixed(8)),
+        productMarkupPercent:valid(p.productMarkupPercent)?p.productMarkupPercent:0};
     },
-    resolve(item, pricing=R.storage.pricing()) {
-      const active=pricing.pvcProfiles?.find(p=>p.id===item.profile);
-      const snapshot=item.profileSnapshot;
-      return active || (snapshot?.id===item.profile&&typeof snapshot.name==='string'&&typeof snapshot.pricePerM2==='number'&&Number.isFinite(snapshot.pricePerM2)&&snapshot.pricePerM2>=0?snapshot:null);
+    adapt(pricing,saved) {
+      const source=Array.isArray(saved?.pvcProfiles)?saved.pvcProfiles:R.DEFAULT_PRICING.pvcProfiles.map(p=>({...p,pricePerM2:pricing.glazing[p.id]})),ids=new Set();
+      pricing.pvcProfiles=source.filter(p=>p&&typeof p.id==='string'&&/^[a-zA-Z0-9_-]+$/.test(p.id)&&!['__proto__','constructor','prototype'].includes(p.id)&&typeof p.name==='string'&&p.name.trim()&&!ids.has(p.id)&&ids.add(p.id)).map(p=>R.profiles.normalize({...p,name:p.name.trim()},pricing));
+      pricing.glazing=Object.fromEntries(pricing.pvcProfiles.map(p=>[p.id,p.basePricePerM2]));
+      R.labels.profiles=Object.fromEntries(pricing.pvcProfiles.map(p=>[p.id,p.name]));return pricing;
     },
-    name(item,pricing) {return R.profiles.resolve(item,pricing)?.name || 'Не указан';},
+    resolve(item,pricing=R.storage.pricing()) {
+      const active=pricing.pvcProfiles?.find(p=>p.id===item.profile),snapshot=item.profileSnapshot;
+      const profile=active||(snapshot?.id===item.profile&&typeof snapshot.name==='string'?snapshot:null);
+      return profile?R.profiles.normalize(profile,pricing):null;
+    },
+    name(item,pricing) {return R.profiles.resolve(item,pricing)?.name||'Не указан';},
     capture(item,pricing) {if(item.mode==='glazing'||item.mode==='balcony-glazing'&&item.balconyGlazingMaterial==='pvc'){const p=R.profiles.resolve(item,pricing);if(p)item.profileSnapshot={...p};}},
-    forItem(item,pricing) {const p=R.profiles.resolve(item,pricing);return p?{...pricing,glazing:{...pricing.glazing,[p.id]:p.pricePerM2}}:pricing;},
-    options(item,pricing) {const list=pricing.pvcProfiles.map(p=>[p.id,p.name]);const p=R.profiles.resolve(item,pricing);if(p&&!list.some(([id])=>id===p.id))list.push([p.id,p.name+' (удалён из настроек)']);return Object.fromEntries(list);}
+    forItem(item,pricing) {const p=R.profiles.resolve(item,pricing);return p?{...pricing,glazing:{...pricing.glazing,[p.id]:p.basePricePerM2}}:pricing;},
+    options(item,pricing) {const list=pricing.pvcProfiles.map(p=>[p.id,p.name]),p=R.profiles.resolve(item,pricing);if(p&&!list.some(([id])=>id===p.id))list.push([p.id,p.name+' (удалён из настроек)']);return Object.fromEntries(list);}
   };
 
 })();
@@ -136,10 +145,9 @@
   function field(path, label) { if (path === 'hardwareDefault' || path.endsWith('.name')) return `<label class="remok-field">${label}<input type="text" required data-price="${path}" value="${esc(get(path))}"></label>`; return `<label class="remok-field">${label}<input type="number" inputmode="decimal" step="any" min="${/divisor/i.test(path) ? '0.000001' : '0'}" required data-price="${path}" value="${get(path)}"></label>`; }
   function section(title, content) { return `<section class="remok-card"><h2>${title}</h2><div class="remok-grid">${content}</div></section>`; }
   function render() {
-    fields.innerHTML = `<section class="remok-card"><h2>Пластиковые профили</h2>${pricing.pvcProfiles.map((p,i)=>`<div class="remok-profile-row"><div class="remok-grid">${field('pvcProfiles.'+i+'.name','Название профиля')}${field('pvcProfiles.'+i+'.pricePerM2','Цена, ₽/м²')}</div><button type="button" data-delete-profile="${esc(p.id)}">Удалить профиль</button></div>`).join('')}<button type="button" data-add-profile>+ Добавить профиль</button></section>`
+    fields.innerHTML = `<section class="remok-card"><h2>Пластиковые профили</h2>${pricing.pvcProfiles.map((p,i)=>`<div class="remok-profile-row"><div class="remok-grid">${field('pvcProfiles.'+i+'.name','Название профиля')}${field('pvcProfiles.'+i+'.basePricePerM2','Базовая цена глухой части, ₽/м²')}${field('pvcProfiles.'+i+'.activityPercent','Надбавка за активную часть, %')}${field('pvcProfiles.'+i+'.laminateOneSidePercent','Ламинация с одной стороны, %')}${field('pvcProfiles.'+i+'.laminateTwoSidesPercent','Ламинация с двух сторон, %')}${field('pvcProfiles.'+i+'.productMarkupPercent','Наценка на изделие, %')}</div><button type="button" data-delete-profile="${esc(p.id)}">Удалить профиль</button></div>`).join('')}<button type="button" data-add-profile>+ Добавить профиль</button></section>`
       + section('Монтаж и заполнение', field('installationDisplayRatePerM2', 'Монтаж с расходными материалами, ₽/м² (выделяется из цены)') + field('sandwichDiscountPerM2', 'Снижение стоимости при сэндвич-панели, ₽/м²'))
       + section('Фурнитура', field('hardwareDefault', 'Фурнитура по умолчанию'))
-      + section('Ламинация ПВХ', field('lamination.oneSideLaminationCoefficient', 'Односторонняя ламинация, коэффициент') + field('lamination.twoSideLaminationCoefficient', 'Двусторонняя ламинация, коэффициент'))
       + section('Алюминиевое остекление', field('aluminum.aluminumRate', 'Холодный белый алюминий, ₽/м²') + field('aluminum.aluminumColorCoefficient', 'Коэффициент цветного алюминия'))
       + section('Наружная отделка', Object.entries(exteriorLabels).map(([k, v]) => field('exterior.' + k, v)).join(''))
       + `<details class="remok-card"><summary>Внутренняя отделка · коэффициенты формул</summary><p class="remok-help">Общие коэффициенты используются в нескольких вариантах отделки. Названия групп работ соответствуют исходным формулам.</p><div class="remok-grid">${Object.entries(interiorLabels).map(([k, v]) => field('interior.' + k, v)).join('')}</div></details>`
@@ -162,7 +170,7 @@
   fields.addEventListener('click',e=>{
     const add=e.target.closest('[data-add-profile]'),remove=e.target.closest('[data-delete-profile]');if(!add&&!remove)return;
     collectDraft();
-    if(add)pricing.pvcProfiles.push({id:'pvc-'+(globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)),name:'Новый профиль',pricePerM2:0});
+    if(add)pricing.pvcProfiles.push({id:'pvc-'+(globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)),name:'Новый профиль',pricePerM2:0,basePricePerM2:0,activityPercent:0,laminateOneSidePercent:30,laminateTwoSidesPercent:50,productMarkupPercent:0});
     else pricing.pvcProfiles=pricing.pvcProfiles.filter(p=>p.id!==remove.dataset.deleteProfile);
     render();
   });
