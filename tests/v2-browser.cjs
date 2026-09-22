@@ -41,12 +41,12 @@ const base=path.resolve(__dirname,'..'),out=process.env.REMOK_TEST_OUTPUT||requi
   const draft=(await state()).draft;near(draft.sandwichAdjustment,ids.length*3200);await page.reload();assert.deepEqual((await state()).draft,draft);
   await page.screenshot({path:path.join(out,`remok-v2-${material}-${shape}.png`),fullPage:true});await click('save-product');
   const result=await page.evaluate(()=>{const s=Remok.storage.read('estimate');return Remok.calc.product(s.items.at(-1),Remok.storage.pricing());});
-  near(result.area,ids.length*8);near(result.total,ids.length*8*(material==='pvc'?18000*1.3:13000*1.4)-ids.length*3200);near(result.installationDisplayPrice,ids.length*24000);
+  near(result.area,ids.length*8);near(result.total,ids.length*8*(material==='pvc'?18000*1.3+3000:13000*1.4)-ids.length*3200);near(result.installationDisplayPrice,ids.length*24000);
  }
  await next();await begin('glazing');await page.locator('[data-action="product-type"][data-type="balcony_small"]').click();
  for(const [key,value]of Object.entries({'windows.0.widthMm':1400,windowHeightMm:1500,doorWidthMm:700,doorHeightMm:2200}))await type('draft.'+key,value);
  await f('draft.profile').selectOption('veka');await f('draft.doorPosition').selectOption('left');await noFinish();await click('save-product');
- near(await page.evaluate(()=>{const s=Remok.storage.read('estimate');return Remok.calc.product(s.items.at(-1),Remok.storage.pricing()).total;}),65520);
+ near(await page.evaluate(()=>{const s=Remok.storage.read('estimate');return Remok.calc.product(s.items.at(-1),Remok.storage.pricing()).total;}),65520+10920);
  for(const kind of ['double','triple']){await next();await begin('glazing');await page.locator(`[data-action="product-type"][data-type="${kind}"]`).click();await type('draft.width',2000);await type('draft.height',1500);await f('draft.profile').selectOption('veka');await noFinish();await click('save-product');}
  await next();await begin('aluminum');await type('draft.width',2000);await type('draft.height',1500);await f('draft.sections.0.openingType').selectOption('sliding');await noFinish();await click('save-product');
  await next();await begin('finish');await type('draft.width',1300);await type('draft.height',2500);await page.locator('[data-action="finish-kind"][data-kind="both"]').click();

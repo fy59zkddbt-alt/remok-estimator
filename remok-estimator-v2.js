@@ -3191,10 +3191,10 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     const installation=m.area*pricing.installationDisplayRatePerM2;
     const line=base.lines.find(l=>l.title==='Остекление');
     if(line) {
-      const index=base.lines.indexOf(line), construction=line.price-adjustment-installation;
-      if(construction<0) base.errors.push('Стоимость конструкции ниже выделенного монтажа. Проверьте ставки монтажа и сэндвича в настройках.');
+      const index=base.lines.indexOf(line), construction=line.price-adjustment-(material==='pvc'?0:installation);
+      if(construction<0) base.errors.push(material==='pvc'?'Стоимость конструкции ниже корректировки сэндвича. Проверьте ставки в настройках.':'Стоимость конструкции ниже выделенного монтажа. Проверьте ставки монтажа и сэндвича в настройках.');
       base.lines.splice(index,1,{...line,kind:'construction',title:material==='aluminum'?'Алюминиевая конструкция':'Профиль '+R.profiles.name(p,pricing),detail:'',price:construction},{kind:'installation',title:'Монтаж с расходными материалами',detail:'',price:installation});
-      base.total-=adjustment;
+      base.total+= (material==='pvc'?installation:0)-adjustment;
     }
     return withWorks({...base,area:m.area,sandwichArea:m.sandwichArea,glassArea:m.glassArea,sandwichAdjustment:adjustment,installationDisplayPrice:line?installation:0},p);
   }
