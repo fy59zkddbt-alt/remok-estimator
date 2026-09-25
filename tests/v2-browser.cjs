@@ -51,7 +51,7 @@ const base=path.resolve(__dirname,'..'),out=process.env.REMOK_TEST_OUTPUT||requi
  await next();await begin('aluminum');await type('draft.width',2000);await type('draft.height',1500);await f('draft.sections.0.openingType').selectOption('sliding');await noFinish();await click('save-product');
  await next();await begin('finish');await type('draft.width',1300);await type('draft.height',2500);await page.locator('[data-action="finish-kind"][data-kind="both"]').click();
  for(const k of ['exterior','interior']){await type('draft.'+k+'.depth',180);await f('draft.'+k+'.type').selectOption(k==='exterior'?'aquilon':'bfk');await f('draft.'+k+'.depthChecked').check();}await click('save-product');
- await click('add-product');await click('edit-balcony');await f('balcony.floor.enabled').check();await type('balcony.floor.length',2500);await type('balcony.floor.width',1300);await click('save-balcony');
+ await click('add-product');await page.locator('[data-action="start"][data-mode="balcony"]').click();await f('draft.floor.enabled').check();await type('draft.floor.length',2500);await type('draft.floor.width',1300);await click('save-balcony');
  await click('continue');await click('delivery-no');await click('add-work');await f('works.0.name').fill('СТИЗ');await f('works.0.flat').check();assert.equal(await f('works.0.amount').inputValue(),'');await type('works.0.amount',12500);
  await page.locator('[data-action="discount-mode"][data-mode="percent"]').click();await type('discount',10);await doc();
  assert(!(await page.locator('main').innerText()).includes('@PRIVATE'));assert(!(await page.locator('main').innerText()).includes('sandwichAdjustment'));assert((await page.locator('main').innerText()).includes('Монтаж с расходными материалами'));
