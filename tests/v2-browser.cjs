@@ -21,14 +21,14 @@ const base=path.resolve(__dirname,'..'),out=process.env.REMOK_TEST_OUTPUT||requi
  async function begin(mode){await page.locator(`[data-action="start"][data-mode="${mode}"]`).click();}
  async function noFinish(){for(const k of ['exterior','interior'])await page.locator(`[data-path="draft.${k}.enabled"][data-value="false"]`).click();}
  async function doc(){if((await state()).step==='saved')await click('continue');await click('document');assert.equal(await page.locator('main input, main select, main textarea').count(),0);}
- assert.equal(await page.locator('.remok-choice').count(),5);
+ assert.equal(await page.locator('.remok-choice').count(),4);
  await f('client.contactPreference').selectOption('telegram');await type('client.telegramUsername','@PRIVATE_REMOK_TEST');
  for(const number of ['89991234567','79991234567','+79991234567']){await f('client.phone').selectText();await f('client.phone').evaluate((el,n)=>{const d=new DataTransfer();d.setData('text/plain',n);el.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:d}));},number);assert.equal(await f('client.phone').inputValue(),'+7 999 123-45-67');}
  for(const material of ['pvc','aluminum'])for(const shape of ['straight','l','u']){
   await next();await begin('balcony-glazing');assert.equal(await f('draft.profile').count(),0);
   await page.locator(`[data-action="balcony-material"][data-material="${material}"]`).click();await page.locator(`[data-action="balcony-shape"][data-shape="${shape}"]`).click();
   if(shape==='l')await f('draft.sidePosition').selectOption('left');
-  if(material==='pvc'){await f('draft.profile').selectOption('veka');await f('draft.lamination').selectOption('one');}else {await f('draft.aluminumColor').selectOption('color');assert.equal(await f('draft.lamination').count(),0);}
+  if(material==='pvc'){await f('draft.profile').selectOption('veka');await f('draft.lamination').selectOption('one');}else {await f('draft.aluminiumOpeningMode').selectOption('sliding');await f('draft.aluminumColor').selectOption('color');assert.equal(await f('draft.lamination').count(),0);}
   const ids=shape==='straight'?['facade']:shape==='l'?['left','facade']:['left','facade','right'];
   for(const id of ids){await page.locator(`[data-action="plane-tab"][data-id="${id}"]`).click();const index=(await state()).draft.planes.findIndex(p=>p.id===id),p='draft.planes.'+index;
    await type(p+'.widthMm',3200);await type(p+'.heightMm',2500);await f(p+'.sectionCount').selectOption('4');assert.deepEqual((await state()).draft.planes[index].sections.map(s=>s.widthMm),[800,800,800,800]);
@@ -41,14 +41,14 @@ const base=path.resolve(__dirname,'..'),out=process.env.REMOK_TEST_OUTPUT||requi
   const draft=(await state()).draft;near(draft.sandwichAdjustment,ids.length*3200);await page.reload();assert.deepEqual((await state()).draft,draft);
   await page.screenshot({path:path.join(out,`remok-v2-${material}-${shape}.png`),fullPage:true});await click('save-product');
   const result=await page.evaluate(()=>{const s=Remok.storage.read('estimate');return Remok.calc.product(s.items.at(-1),Remok.storage.pricing());});
-  near(result.area,ids.length*8);near(result.total,ids.length*8*(material==='pvc'?18000*1.3+3000:13000*1.4)-ids.length*3200);near(result.installationDisplayPrice,ids.length*24000);
+  near(result.area,ids.length*8);near(result.total,ids.length*8*(material==='pvc'?18000*1.3+3000:13000*1.4+3000)-ids.length*3200);near(result.installationDisplayPrice,ids.length*24000);
  }
  await next();await begin('glazing');await page.locator('[data-action="product-type"][data-type="balcony_small"]').click();
  for(const [key,value]of Object.entries({'windows.0.widthMm':1400,windowHeightMm:1500,doorWidthMm:700,doorHeightMm:2200}))await type('draft.'+key,value);
  await f('draft.profile').selectOption('veka');await f('draft.doorPosition').selectOption('left');await noFinish();await click('save-product');
  near(await page.evaluate(()=>{const s=Remok.storage.read('estimate');return Remok.calc.product(s.items.at(-1),Remok.storage.pricing()).total;}),65520+10920);
  for(const kind of ['double','triple']){await next();await begin('glazing');await page.locator(`[data-action="product-type"][data-type="${kind}"]`).click();await type('draft.width',2000);await type('draft.height',1500);await f('draft.profile').selectOption('veka');await noFinish();await click('save-product');}
- await next();await begin('aluminum');await type('draft.width',2000);await type('draft.height',1500);await f('draft.sections.0.openingType').selectOption('sliding');await noFinish();await click('save-product');
+ await next();await begin('glazing');await f('draft.profile').selectOption('aluminium-legacy');await f('draft.aluminiumOpeningMode').selectOption('sliding');await type('draft.width',2000);await type('draft.height',1500);await f('draft.sections.0.openingType').selectOption('sliding');await noFinish();await click('save-product');
  await next();await begin('finish');await type('draft.width',1300);await type('draft.height',2500);await page.locator('[data-action="finish-kind"][data-kind="both"]').click();
  for(const k of ['exterior','interior']){await type('draft.'+k+'.depth',180);await f('draft.'+k+'.type').selectOption(k==='exterior'?'aquilon':'bfk');await f('draft.'+k+'.depthChecked').check();}await click('save-product');
  await click('add-product');await page.locator('[data-action="start"][data-mode="balcony"]').click();await f('draft.floor.enabled').check();await type('draft.floor.length',2500);await type('draft.floor.width',1300);await click('save-balcony');

@@ -19,9 +19,9 @@ const right=V.geometry({...block,doorSide:'right'}).primitives.filter(p=>p.kind=
 for(const material of ['pvc','aluminum'])for(const shape of ['straight','l','u']){
  const b={...item(),mode:'balcony-glazing',balconyGlazingMaterial:material,balconyGlazingShape:shape,sidePosition:'left',aluminumColor:'white',planes:['left','facade','right'].map(id=>({...V.newPlane(id),widthMm:2000,heightMm:2000}))};
  b.planes.forEach(v=>V.equalPlane(v));const n=shape==='straight'?1:shape==='l'?2:3;
- r=C.product(b,p);near(r.area,n*4);near(r.total,n*4*(material==='pvc'?18000+3000:13000));assert.equal(r.errors.length,0);
+ r=C.product(b,p);near(r.area,n*4);near(r.total,n*4*(material==='pvc'?18000+3000:13000+3000));assert.equal(r.errors.length,0);
  b.planes.forEach(v=>Object.assign(v,{heightMode:'floor',upperHeightMm:1000,lowerHeightMm:1000,lowerFilling:'sandwich'}));
- b.lamination='one';r=C.product(b,p);near(r.sandwichArea,n*2);near(r.glassArea,n*2);near(r.sandwichAdjustment,n*2000);near(r.total,n*4*(material==='pvc'?18000*1.3+3000:13000)-n*2000);near(r.installationDisplayPrice,n*12000);
+ b.lamination='one';r=C.product(b,p);near(r.sandwichArea,n*2);near(r.glassArea,n*2);near(r.sandwichAdjustment,n*2000);near(r.total,n*4*(material==='pvc'?18000*1.3+3000:13000+3000)-n*2000);near(r.installationDisplayPrice,n*12000);
  V.sync(b,p);near(b.sandwichAdjustment,n*2000);
  if(shape==='l')near(r.sandwichAdjustment,4000);
  b.planes.forEach(v=>v.lowerFilling='glass');near(C.product(b,p).sandwichAdjustment,0);
@@ -29,4 +29,4 @@ for(const material of ['pvc','aluminum'])for(const shape of ['straight','l','u']
 }
 context.localStorage.getItem=()=>JSON.stringify({glazing:{veka:19500},hardwareDefault:'Своя'});const merged=R.storage.pricing();assert.equal(merged.glazing.veka,19500);assert.equal(merged.hardwareDefault,'Своя');assert.equal(merged.installationDisplayRatePerM2,3000);assert.equal(merged.sandwichDiscountPerM2,1000);
 const old=fs.readFileSync(path.join(__dirname,'../remok-estimator.js'),'utf8');assert.equal(source.split('// ===== calculators =====')[1].split('// ===== storage =====')[0],old.split('// ===== calculators =====')[1].split('// ===== storage =====')[0]);
-console.log('PASS A–J: PVC additive installation, unchanged aluminum totals and lamination, block area 3.64 / finish 2100×2200, straight/L/U PVC+aluminum, floor glass/sandwich, absolute adjustment, validation and PricingConfig defaults. Original calculators unchanged.');
+console.log('PASS A–J: PVC additive installation, additive aluminum installation and unchanged lamination, block area 3.64 / finish 2100×2200, straight/L/U PVC+aluminum, floor glass/sandwich, absolute adjustment, validation and PricingConfig defaults. Original calculators unchanged.');

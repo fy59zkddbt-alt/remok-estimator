@@ -38,9 +38,9 @@
   'use strict';
   const R = window.Remok = window.Remok || {};
   R.labels = {
-    types: { 'balcony-glazing': 'Остекление балкона', glazing: 'Пластиковое остекление', aluminum: 'Алюминиевое остекление', finish: 'Отделка окна' },
+    types: { 'balcony-glazing': 'Остекление балкона', glazing: 'Остекление', aluminum: 'Алюминиевое остекление', finish: 'Отделка окна' },
     lamination: { none: 'Без ламинации', one: 'Односторонняя ламинация', two: 'Двусторонняя ламинация' },
-    aluminumColors: { white: 'Белый', color: 'Цветной' },
+    aluminumColors: { white: 'Без цвета', color: 'Цвет' },
     profiles: { exprof: 'Exprof XS570 Siberica', veka: 'VEKA Softline 70', rehau: 'REHAU Sib-Design' },
     exterior: { aquilon: 'Аквилон крашеный', corner1: 'Уголок — 1 контур', corner2: 'Уголок — 2 контура' },
     interior: {
@@ -86,7 +86,9 @@
       const base=p.basePricePerM2??p.pricePerM2??R.DEFAULT_PRICING.glazing[p.id]??0;
       const one=Math.max(0,((pricing.lamination?.oneSideLaminationCoefficient??1.3)-1)*100);
       const two=Math.max(0,((pricing.lamination?.twoSideLaminationCoefficient??1.5)-1)*100);
-      return {...p,basePricePerM2:valid(base)?base:0,
+      return {...p,materialType:p.materialType==='aluminium'?'aluminium':'pvc',basePricePerM2:valid(base)?base:0,
+        connectorsPercent:valid(p.connectorsPercent)?p.connectorsPercent:0,
+        colorPercent:valid(p.colorPercent)?p.colorPercent:Number((Math.max(0,(pricing.aluminum.aluminumColorCoefficient-1)*100)).toFixed(8)),
         activityPercent:valid(p.activityPercent)?p.activityPercent:0,
         laminateOneSidePercent:valid(p.laminateOneSidePercent)?p.laminateOneSidePercent:Number(one.toFixed(8)),
         laminateTwoSidesPercent:valid(p.laminateTwoSidesPercent)?p.laminateTwoSidesPercent:Number(two.toFixed(8)),
@@ -95,18 +97,28 @@
     adapt(pricing,saved) {
       const source=Array.isArray(saved?.pvcProfiles)?saved.pvcProfiles:R.DEFAULT_PRICING.pvcProfiles.map(p=>({...p,pricePerM2:pricing.glazing[p.id]})),ids=new Set();
       pricing.pvcProfiles=source.filter(p=>p&&typeof p.id==='string'&&/^[a-zA-Z0-9_-]+$/.test(p.id)&&!['__proto__','constructor','prototype'].includes(p.id)&&typeof p.name==='string'&&p.name.trim()&&!ids.has(p.id)&&ids.add(p.id)).map(p=>R.profiles.normalize({...p,name:p.name.trim()},pricing));
+      if(saved?.profileCatalogVersion!==2){
+        let id='aluminium-legacy';while(pricing.pvcProfiles.some(p=>p.id===id))id+='-1';
+        pricing.pvcProfiles.push(R.profiles.normalize({id,name:'Алюминий',materialType:'aluminium',basePricePerM2:pricing.aluminum.aluminumRate},pricing));
+        pricing.legacyAluminiumProfileId=id;
+      }
+      pricing.profileCatalogVersion=2;
       pricing.glazing=Object.fromEntries(pricing.pvcProfiles.map(p=>[p.id,p.basePricePerM2]));
       R.labels.profiles=Object.fromEntries(pricing.pvcProfiles.map(p=>[p.id,p.name]));return pricing;
     },
     resolve(item,pricing=R.storage.pricing()) {
-      const active=pricing.pvcProfiles?.find(p=>p.id===item.profile),snapshot=item.profileSnapshot;
+      const legacy=(item.mode==='aluminum'||item.mode==='balcony-glazing'&&item.balconyGlazingMaterial==='aluminum')&&(!item.profile||!item.materialType&&pricing.pvcProfiles?.find(p=>p.id===item.profile)?.materialType!=='aluminium');
+      const profileId=legacy?pricing.legacyAluminiumProfileId:item.profile;
+      const active=pricing.pvcProfiles?.find(p=>p.id===profileId),snapshot=item.profileSnapshot;
+      if(legacy&&!active)return R.profiles.normalize({id:profileId||'aluminium-legacy',name:'Алюминий',materialType:'aluminium',basePricePerM2:pricing.aluminum.aluminumRate},pricing);
       const profile=active||(snapshot?.id===item.profile&&typeof snapshot.name==='string'?snapshot:null);
       return profile?R.profiles.normalize(profile,pricing):null;
     },
     name(item,pricing) {return R.profiles.resolve(item,pricing)?.name||'Не указан';},
-    capture(item,pricing) {if(item.mode==='glazing'||item.mode==='balcony-glazing'&&item.balconyGlazingMaterial==='pvc'){const p=R.profiles.resolve(item,pricing);if(p)item.profileSnapshot={...p};}},
+    capture(item,pricing) {if(['glazing','aluminum','balcony-glazing'].includes(item.mode)){const p=R.profiles.resolve(item,pricing);if(p){item.profileSnapshot={...p};item.profile=p.id;item.materialType=p.materialType;}}},
+    material(item,pricing) {return R.profiles.resolve(item,pricing)?.materialType||(item.mode==='aluminum'||item.balconyGlazingMaterial==='aluminum'?'aluminium':'pvc');},
     forItem(item,pricing) {const p=R.profiles.resolve(item,pricing);return p?{...pricing,glazing:{...pricing.glazing,[p.id]:p.basePricePerM2}}:pricing;},
-    options(item,pricing) {const list=pricing.pvcProfiles.map(p=>[p.id,p.name]),p=R.profiles.resolve(item,pricing);if(p&&!list.some(([id])=>id===p.id))list.push([p.id,p.name+' (удалён из настроек)']);return Object.fromEntries(list);}
+    options(item,pricing) {const list=pricing.pvcProfiles.filter(p=>!(item.productType==='balcony_small'&&item.mode==='glazing')||p.materialType==='pvc').filter(p=>item.mode!=='balcony-glazing'||!item.balconyGlazingMaterial||p.materialType===(item.balconyGlazingMaterial==='aluminum'?'aluminium':'pvc')).map(p=>[p.id,p.name]),p=R.profiles.resolve(item,pricing);if(p&&!list.some(([id])=>id===p.id))list.push([p.id,p.name+' (удалён из настроек)']);return Object.fromEntries(list);}
   };
 
 })();
@@ -145,10 +157,9 @@
   function field(path, label) { if (path === 'hardwareDefault' || path.endsWith('.name')) return `<label class="remok-field">${label}<input type="text" required data-price="${path}" value="${esc(get(path))}"></label>`; return `<label class="remok-field">${label}<input type="number" inputmode="decimal" step="any" min="${/divisor/i.test(path) ? '0.000001' : '0'}" required data-price="${path}" value="${get(path)}"></label>`; }
   function section(title, content) { return `<section class="remok-card"><h2>${title}</h2><div class="remok-grid">${content}</div></section>`; }
   function render() {
-    fields.innerHTML = `<section class="remok-card"><h2>Пластиковые профили</h2>${pricing.pvcProfiles.map((p,i)=>`<div class="remok-profile-row"><div class="remok-grid">${field('pvcProfiles.'+i+'.name','Название профиля')}${field('pvcProfiles.'+i+'.basePricePerM2','Базовая цена глухой части, ₽/м²')}${field('pvcProfiles.'+i+'.activityPercent','Надбавка за активную часть, %')}${field('pvcProfiles.'+i+'.laminateOneSidePercent','Ламинация с одной стороны, %')}${field('pvcProfiles.'+i+'.laminateTwoSidesPercent','Ламинация с двух сторон, %')}${field('pvcProfiles.'+i+'.productMarkupPercent','Наценка на изделие, %')}</div><button type="button" data-delete-profile="${esc(p.id)}">Удалить профиль</button></div>`).join('')}<button type="button" data-add-profile>+ Добавить профиль</button></section>`
-      + section('Монтаж и заполнение', field('installationDisplayRatePerM2', 'Монтаж с расходными материалами, ₽/м² (для ПВХ добавляется сверху)') + field('sandwichDiscountPerM2', 'Снижение стоимости при сэндвич-панели, ₽/м²'))
+    fields.innerHTML = `<section class="remok-card"><h2>Профили остекления</h2>${pricing.pvcProfiles.map((p,i)=>`<div class="remok-profile-row"><div class="remok-grid">${field('pvcProfiles.'+i+'.name','Название профиля')}<label class="remok-field">Тип<select data-price="pvcProfiles.${i}.materialType"><option value="pvc" ${p.materialType==='pvc'?'selected':''}>ПВХ</option><option value="aluminium" ${p.materialType==='aluminium'?'selected':''}>Алюминий</option></select></label>${field('pvcProfiles.'+i+'.basePricePerM2','Базовая цена глухой части, ₽/м²')}${field('pvcProfiles.'+i+'.activityPercent','Надбавка за активную часть, %')}${p.materialType==='aluminium'?field('pvcProfiles.'+i+'.colorPercent','Цвет, %'):field('pvcProfiles.'+i+'.laminateOneSidePercent','Ламинация с одной стороны, %')+field('pvcProfiles.'+i+'.laminateTwoSidesPercent','Ламинация с двух сторон, %')}${field('pvcProfiles.'+i+'.connectorsPercent','Расширители/соединители, %')}${field('pvcProfiles.'+i+'.productMarkupPercent','Наценка на изделие, %')}</div><button type="button" data-delete-profile="${esc(p.id)}">Удалить профиль</button></div>`).join('')}<button type="button" data-add-profile>+ Добавить профиль</button></section>`
+      + section('Монтаж и заполнение', field('installationDisplayRatePerM2', 'Монтаж с расходными материалами, ₽/м² (добавляется сверху для всех профилей)') + field('sandwichDiscountPerM2', 'Снижение стоимости при сэндвич-панели, ₽/м²'))
       + section('Фурнитура', field('hardwareDefault', 'Фурнитура по умолчанию'))
-      + section('Алюминиевое остекление', field('aluminum.aluminumRate', 'Холодный белый алюминий, ₽/м²') + field('aluminum.aluminumColorCoefficient', 'Коэффициент цветного алюминия'))
       + section('Наружная отделка', Object.entries(exteriorLabels).map(([k, v]) => field('exterior.' + k, v)).join(''))
       + `<details class="remok-card"><summary>Внутренняя отделка · коэффициенты формул</summary><p class="remok-help">Общие коэффициенты используются в нескольких вариантах отделки. Названия групп работ соответствуют исходным формулам.</p><div class="remok-grid">${Object.entries(interiorLabels).map(([k, v]) => field('interior.' + k, v)).join('')}</div></details>`
       + section('Балкон · стены и потолок', Object.entries(R.labels.walls).map(([k, v]) => field('balcony.walls.' + k + '.withoutInsulation', v + ' без утепления, ₽/м²') + field('balcony.walls.' + k + '.withInsulation', v + ' с утеплением, ₽/м²')).join(''))
@@ -158,8 +169,9 @@
       + section('Тёплый пол', field('balcony.warmFloor.base', 'Фиксированная часть, ₽') + field('balcony.warmFloor.rate', 'Стоимость за м², ₽'));
   }
   function collectDraft() {
-    fields.querySelectorAll('[data-price]').forEach(el=>{const keys=el.dataset.price.split('.'),key=keys.pop();keys.reduce((o,k)=>o[k],pricing)[key]=el.type==='text'?el.value:el.value===''?'':Number(el.value);});
+    fields.querySelectorAll('[data-price]').forEach(el=>{const keys=el.dataset.price.split('.'),key=keys.pop();keys.reduce((o,k)=>o[k],pricing)[key]=(el.type==='text'||el.tagName==='SELECT')?el.value:el.value===''?'':Number(el.value);});
   }
+  fields.addEventListener('change',e=>{if(e.target.dataset.price?.endsWith('.materialType')){collectDraft();render();}});
   function preserveSnapshots() {
     const estimate=R.storage.read('estimate');if(!estimate)return true;
     const previous=R.storage.pricing();
@@ -170,7 +182,7 @@
   fields.addEventListener('click',e=>{
     const add=e.target.closest('[data-add-profile]'),remove=e.target.closest('[data-delete-profile]');if(!add&&!remove)return;
     collectDraft();
-    if(add)pricing.pvcProfiles.push({id:'pvc-'+(globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)),name:'Новый профиль',pricePerM2:0,basePricePerM2:0,activityPercent:0,laminateOneSidePercent:30,laminateTwoSidesPercent:50,productMarkupPercent:0});
+    if(add)pricing.pvcProfiles.push({id:'pvc-'+(globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)),name:'Новый профиль',materialType:'pvc',connectorsPercent:0,colorPercent:0,pricePerM2:0,basePricePerM2:0,activityPercent:0,laminateOneSidePercent:30,laminateTwoSidesPercent:50,productMarkupPercent:0});
     else pricing.pvcProfiles=pricing.pvcProfiles.filter(p=>p.id!==remove.dataset.deleteProfile);
     render();
   });
@@ -178,7 +190,7 @@
     e.preventDefault();
     if (!form.reportValidity()) return;
     for (const el of fields.querySelectorAll('[data-price]')) {
-      const value = el.type === 'text' ? el.value.trim() : Number(el.value); if (el.type === 'text' ? !value : !Number.isFinite(value)) { status.textContent = 'Проверьте числовые значения.'; return; }
+      const value = (el.type === 'text'||el.tagName==='SELECT') ? el.value.trim() : Number(el.value); if ((el.type === 'text'||el.tagName==='SELECT') ? !value : !Number.isFinite(value)) { status.textContent = 'Проверьте числовые значения.'; return; }
       const parts = el.dataset.price.split('.'), key = parts.pop(); parts.reduce((o, k) => o[k], pricing)[key] = value;
     }
     if (!preserveSnapshots()) return;
